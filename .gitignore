@@ -1,0 +1,16 @@
+# Local provenance data can contain source snapshots.
+.ai-provenance/
+
+# Local build outputs.
+bin/
+dist/
+coverage.out
+
+# Editor and operating-system files.
+.DS_Store
+.idea/
+.vscode/
+
+# Private authoring material: design drafts, task logs, and AI development records.
+/docs/
+/AGENTS.md
