@@ -42,6 +42,7 @@ lines are uncovered, never AI code.
 ai-prov version
 ai-prov init
 ai-prov status
+ai-prov debug bundle --output ai-prov-debug.zip
 ai-prov verify --scope staged --strict --json
 ai-prov report --scope staged --json
 ~~~
@@ -56,6 +57,24 @@ ai-prov report --scope staged --json
 
 Run ai-prov init for an uninitialized project, create a new session after a
 baseline conflict, and retry after a storage lock.
+
+## Installation and support
+
+Download the archive matching your operating system and CPU from
+[Releases](https://github.com/Crish07/ai-code-provenance/releases). Verify it
+against `SHA256SUMS.txt`, unzip it, and add the extracted directory to `PATH`.
+On Windows, use the `.exe` binaries and configure the MCP client with the full
+path to `ai-prov-mcp.exe` when `PATH` is unavailable.
+
+For offline or internal distribution, mirror one verified release archive and
+its matching `SHA256SUMS.txt` in the approved artifact repository. Install it
+without modification; no service, network access, source upload, or project
+data upload is required at runtime.
+
+When reporting a problem, include the output of `ai-prov version`, the command
+that failed, its stderr, and the operating system/architecture. Do not attach
+source code, `.ai-provenance/snapshots`, diffs, tokens, credentials, or the
+SQLite database. Use the issue template for a privacy-safe report.
 
 ## Development
 
