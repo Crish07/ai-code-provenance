@@ -232,6 +232,20 @@ func TestBootstrap_NotInitialized(t *testing.T) {
 	}
 }
 
+func TestBootstrapFromEnvironment_UsesConfiguredProjectRoot(t *testing.T) {
+	root := newInitializedRoot(t)
+	t.Setenv(ProjectRootEnv, root)
+
+	srv, err := BootstrapFromEnvironment(nil)
+	if err != nil {
+		t.Fatalf("BootstrapFromEnvironment() error = %v", err)
+	}
+	defer srv.Cleanup()
+	if srv.svc.Root != root {
+		t.Errorf("service root = %q, want %q", srv.svc.Root, root)
+	}
+}
+
 // TestMapError_StorageLocked verifies the storage lock case required by the
 // acceptance criteria; reproducing a real SQLite lock in a unit test is flaky,
 // so the mapping is exercised directly with the sentinel error.

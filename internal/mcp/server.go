@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"log/slog"
+	"os"
 	"path/filepath"
 
 	"ai-prov/internal/app"
@@ -13,6 +14,12 @@ import (
 
 	mcp "github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// ProjectRootEnv overrides the process working directory used to find an
+// initialized provenance project. MCP hosts that launch servers outside the
+// workspace (for example, a global IDE configuration) should set this value to
+// the absolute path of the tracked project.
+const ProjectRootEnv = "AI_PROV_PROJECT_ROOT"
 
 // Implementation identifies the ai-prov-mcp server to MCP clients.
 var Implementation = &mcp.Implementation{
@@ -84,4 +91,14 @@ func Bootstrap(start string, logger *slog.Logger) (*Server, error) {
 	srv := New(svc, logger)
 	srv.cleanup = func() { _ = store.Close() }
 	return srv, nil
+}
+
+// BootstrapFromEnvironment bootstraps from AI_PROV_PROJECT_ROOT when set and
+// otherwise preserves the historical behavior of using the process directory.
+func BootstrapFromEnvironment(logger *slog.Logger) (*Server, error) {
+	start := os.Getenv(ProjectRootEnv)
+	if start == "" {
+		start = "."
+	}
+	return Bootstrap(start, logger)
 }

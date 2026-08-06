@@ -30,7 +30,8 @@ Release 二进制带平台后缀，请优先填写其绝对路径，例如：
 ~~~
 
 MCP server 名称固定为 `ai-prov`，command 为 `ai-prov-mcp` 二进制；它使用 stdio，
-不需要参数、URL、API Key 或环境变量。不要在终端中手工运行该二进制。
+不需要参数、URL 或 API Key。当 MCP Host 不在被追踪项目目录中启动时，才需要设置
+`AI_PROV_PROJECT_ROOT`。不要在终端中手工运行该二进制。
 
 ## 2. 配置对应 Agent
 
@@ -83,6 +84,27 @@ codex mcp add ai-prov -- /解压目录/ai-prov-mcp-darwin-arm64
 
 在 Cursor 的 MCP/Tools 设置中启用 `ai-prov`，再将 `cursor-rules.mdc` 复制为
 `.cursor/rules/ai-prov.mdc`。
+
+### Trae
+
+在 Trae 的 MCP Server JSON 配置中，填写 release MCP 二进制和被追踪项目的绝对根路径：
+
+~~~json
+{
+  "mcpServers": {
+    "ai-prov": {
+      "command": "/解压目录/ai-prov-mcp-darwin-arm64",
+      "env": {
+        "AI_PROV_PROJECT_ROOT": "/被追踪项目的绝对路径"
+      }
+    }
+  }
+}
+~~~
+
+先在该项目运行对应的 `ai-prov ... init`。再将 `AGENT-RULES.md` 粘贴到 Trae
+项目级 Agent Rules 中。Trae 若从应用自身目录启动 MCP server，必须设置这个环境变量；
+不再依赖 `cwd`。
 
 ### 其他 Agent
 

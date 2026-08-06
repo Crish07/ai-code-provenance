@@ -30,8 +30,9 @@ Initialize each tracked project once:
 ~~~
 
 The MCP server name is `ai-prov`; its command is the `ai-prov-mcp` binary. It
-uses stdio and needs no arguments, URL, API key, or environment variables.
-Do not run it manually in a terminal.
+uses stdio and needs no arguments, URL, or API key. Set
+`AI_PROV_PROJECT_ROOT` only when the MCP host does not start in the tracked
+project directory. Do not run it manually in a terminal.
 
 ## 2. Configure your agent
 
@@ -84,6 +85,29 @@ Create or merge `.cursor/mcp.json` in the tracked project:
 
 Enable `ai-prov` in Cursor MCP/Tools settings, then copy `cursor-rules.mdc` to
 `.cursor/rules/ai-prov.mdc`.
+
+### Trae
+
+In Trae's MCP server JSON configuration, set the release MCP binary and the
+absolute root of the project being tracked:
+
+~~~json
+{
+  "mcpServers": {
+    "ai-prov": {
+      "command": "/extract-directory/ai-prov-mcp-darwin-arm64",
+      "env": {
+        "AI_PROV_PROJECT_ROOT": "/absolute/path/to/tracked-project"
+      }
+    }
+  }
+}
+~~~
+
+Run the matching `ai-prov ... init` command in that project first. In Trae's
+project-level agent rules, paste `AGENT-RULES.md`. The environment variable is
+required when Trae launches MCP servers from its own application directory;
+`cwd` alone is no longer required.
 
 ### Other agents
 
