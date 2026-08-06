@@ -87,10 +87,6 @@ Enable `ai-prov` in Cursor MCP/Tools settings, then copy `cursor-rules.mdc` to
 
 ### Trae
 
-Use a **project-level** MCP configuration in the tracked project, rather than
-a global/user MCP entry. The project configuration selects the MCP tools used
-by that project and lets the server use the active workspace as its root.
-
 Create or merge the project's `.mcp.json`:
 
 ~~~json
@@ -103,15 +99,12 @@ Create or merge the project's `.mcp.json`:
 }
 ~~~
 
-Run the matching `ai-prov ... init` command in that project first. In Trae's
-project-level agent rules, paste `AGENT-RULES.md`.
+Then:
 
-`AI_PROV_PROJECT_ROOT` is an optional compatibility override only. Use it only
-when a legacy MCP host cannot provide a project working directory or MCP
-workspace root; do not hard-code one project's path in a global MCP
-configuration. Modern hosts require no project-path setting: ai-prov first
-uses the project configuration's working directory and otherwise requests the
-host's MCP workspace root automatically.
+1. Run the matching `ai-prov ... init` command in the project root.
+2. Paste `AGENT-RULES.md` into Trae's project-level agent rules.
+3. Restart Trae or start a new agent conversation and confirm the three
+   `provenance.*` tools are available.
 
 ### Other agents
 

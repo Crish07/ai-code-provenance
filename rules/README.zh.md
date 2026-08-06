@@ -86,10 +86,6 @@ codex mcp add ai-prov -- /解压目录/ai-prov-mcp-darwin-arm64
 
 ### Trae
 
-应在**被追踪项目内**使用项目级 MCP 配置，而不是在 Trae 的用户/全局 MCP 配置中写死某个
-项目路径。项目级配置用于声明该项目使用哪些 MCP 工具，并让 MCP server 以当前工作区作为
-项目根目录。
-
 在项目根目录创建或合并 `.mcp.json`：
 
 ~~~json
@@ -102,13 +98,11 @@ codex mcp add ai-prov -- /解压目录/ai-prov-mcp-darwin-arm64
 }
 ~~~
 
-先在该项目运行对应的 `ai-prov ... init`。再将 `AGENT-RULES.md` 粘贴到 Trae
-项目级 Agent Rules 中。
+然后完成以下操作：
 
-`AI_PROV_PROJECT_ROOT` 仅是兼容性兜底：仅当某个 MCP Host 无法从项目配置以工作区目录启动
-server、也无法提供 MCP workspace root 时才设置它。不要在用户/全局 MCP 配置中为它写死
-某一个项目的路径。现代 Host 无需配置项目路径：ai-prov 会先使用项目配置的工作目录，失败时
-自动请求 Host 的 MCP workspace root。
+1. 在项目根目录运行对应的 `ai-prov ... init`。
+2. 将 `AGENT-RULES.md` 粘贴到 Trae 的项目级 Agent Rules。
+3. 重启 Trae 或新开 Agent 会话，确认出现三个 `provenance.*` 工具。
 
 ### 其他 Agent
 
