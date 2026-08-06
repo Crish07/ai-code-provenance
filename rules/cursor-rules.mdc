@@ -1,0 +1,25 @@
+---
+description: Require AI coding changes to be recorded through ai-prov MCP.
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+# AI Code Provenance Protocol
+
+All tracked source-code changes MUST use ai-prov MCP. Before editing, call
+provenance.session_start. Before reporting completion, call
+provenance.session_finish and require finished. If either call fails, stop,
+report the error code, and do not claim success.
+
+Workflow: confirm ai-prov init; start a session with task, agent cursor, and
+model; edit; finish using the returned session ID; optionally call
+provenance.verify for staged strict verification before commit.
+
+Only provenance.session_start, provenance.session_finish, and
+provenance.verify are valid tool names. Do not edit before start, skip finish,
+submit client-generated diffs as facts, or manually commit between start and
+finish. Unrecorded lines are never AI code.
+
+For PROJECT_NOT_INITIALIZED run init. For SESSION_BASELINE_CONFLICT start a new
+session. Retry STORAGE_LOCKED later.
