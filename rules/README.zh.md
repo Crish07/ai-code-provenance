@@ -86,7 +86,7 @@ codex mcp add ai-prov -- /解压目录/ai-prov-mcp-darwin-arm64
 
 ### Trae
 
-在项目根目录创建或合并 `.mcp.json`：
+在项目根目录创建或合并 `.trae/mcp.json`：
 
 ~~~json
 {
@@ -103,6 +103,24 @@ codex mcp add ai-prov -- /解压目录/ai-prov-mcp-darwin-arm64
 1. 在项目根目录运行对应的 `ai-prov ... init`。
 2. 将 `AGENT-RULES.md` 粘贴到 Trae 的项目级 Agent Rules。
 3. 重启 Trae 或新开 Agent 会话，确认出现三个 `provenance.*` 工具。
+
+### Qoder
+
+在 Qoder 中打开 **Qoder Settings → MCP → My Servers → + Add**，在出现的 JSON
+配置中添加或合并：
+
+~~~json
+{
+  "mcpServers": {
+    "ai-prov": {
+      "command": "/解压目录/ai-prov-mcp-darwin-arm64"
+    }
+  }
+}
+~~~
+
+保存后，确认 `ai-prov` 显示连接成功并可展开查看工具。将本目录的 `AGENTS.md`
+复制到被追踪项目根目录；Qoder 会自动读取该文件中的规则。
 
 ### 其他 Agent
 

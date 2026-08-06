@@ -87,7 +87,7 @@ Enable `ai-prov` in Cursor MCP/Tools settings, then copy `cursor-rules.mdc` to
 
 ### Trae
 
-Create or merge the project's `.mcp.json`:
+Create or merge `.trae/mcp.json` in the project root:
 
 ~~~json
 {
@@ -105,6 +105,25 @@ Then:
 2. Paste `AGENT-RULES.md` into Trae's project-level agent rules.
 3. Restart Trae or start a new agent conversation and confirm the three
    `provenance.*` tools are available.
+
+### Qoder
+
+Open **Qoder Settings → MCP → My Servers → + Add**. Add or merge the following
+JSON in the configuration file that opens:
+
+~~~json
+{
+  "mcpServers": {
+    "ai-prov": {
+      "command": "/extract-directory/ai-prov-mcp-darwin-arm64"
+    }
+  }
+}
+~~~
+
+Save the configuration and confirm that `ai-prov` is connected and exposes its
+tools. Copy this directory's `AGENTS.md` to the tracked project root; Qoder
+automatically recognizes its rules.
 
 ### Other agents
 
