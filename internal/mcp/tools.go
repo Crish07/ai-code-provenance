@@ -101,17 +101,24 @@ type verifyOutput struct {
 // provenance.verify onto the SDK server. The handler performs its own
 // unmarshaling and validation so it can return the structured ErrorPayload on
 // every failure mode.
-func registerTools(s *mcp.Server, svc *app.Service, verifier provenance.Verifier) {
+func registerTools(s *mcp.Server, resolve projectResolver) {
 	s.AddTool(&mcp.Tool{
 		Name:        "provenance.session_start",
 		Description: "Start a provenance session and persist a baseline snapshot before any tracked source file is modified.",
 		InputSchema: sessionStartInputSchema,
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		project, pending, problem := resolve(ctx, req)
+		if pending != nil {
+			return pending, nil
+		}
+		if problem != nil {
+			return errorResult(problem), nil
+		}
 		in, perr := decodeStartInput(req.Params.Arguments)
 		if perr != nil {
 			return errorResult(perr), nil
 		}
-		res, err := svc.Start(ctx, app.StartRequest{Task: in.Task, Agent: in.Agent, Model: in.Model})
+		res, err := project.svc.Start(ctx, app.StartRequest{Task: in.Task, Agent: in.Agent, Model: in.Model})
 		if err != nil {
 			return errorResult(mapError(err)), nil
 		}
@@ -130,11 +137,18 @@ func registerTools(s *mcp.Server, svc *app.Service, verifier provenance.Verifier
 		Description: "Finish a provenance session: read the workspace, compute the snapshot diff, and persist change events with line provenance in one transaction.",
 		InputSchema: sessionFinishInputSchema,
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		project, pending, problem := resolve(ctx, req)
+		if pending != nil {
+			return pending, nil
+		}
+		if problem != nil {
+			return errorResult(problem), nil
+		}
 		in, perr := decodeFinishInput(req.Params.Arguments)
 		if perr != nil {
 			return errorResult(perr), nil
 		}
-		res, err := svc.Finish(ctx, in.SessionID)
+		res, err := project.svc.Finish(ctx, in.SessionID)
 		if err != nil {
 			return errorResult(mapError(err)), nil
 		}
@@ -164,11 +178,18 @@ func registerTools(s *mcp.Server, svc *app.Service, verifier provenance.Verifier
 		Description: "Verify added diff lines are covered by AI provenance. Reports coverage without blocking git; strict surfaces uncovered lines as a failed status.",
 		InputSchema: verifyInputSchema,
 	}, func(ctx context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		project, pending, problem := resolve(ctx, req)
+		if pending != nil {
+			return pending, nil
+		}
+		if problem != nil {
+			return errorResult(problem), nil
+		}
 		in, perr := decodeVerifyInput(req.Params.Arguments)
 		if perr != nil {
 			return errorResult(perr), nil
 		}
-		res, err := verifier.Verify(ctx, provenance.Request{Scope: in.Scope, Strict: in.Strict})
+		res, err := project.verifier.Verify(ctx, provenance.Request{Scope: in.Scope, Strict: in.Strict})
 		if err != nil {
 			return errorResult(mapError(err)), nil
 		}

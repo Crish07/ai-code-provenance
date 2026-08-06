@@ -30,8 +30,7 @@ Release 二进制带平台后缀，请优先填写其绝对路径，例如：
 ~~~
 
 MCP server 名称固定为 `ai-prov`，command 为 `ai-prov-mcp` 二进制；它使用 stdio，
-不需要参数、URL 或 API Key。当 MCP Host 不在被追踪项目目录中启动时，才需要设置
-`AI_PROV_PROJECT_ROOT`。不要在终端中手工运行该二进制。
+不需要参数、URL、API Key 或项目路径。不要在终端中手工运行该二进制。
 
 ## 2. 配置对应 Agent
 
@@ -87,24 +86,29 @@ codex mcp add ai-prov -- /解压目录/ai-prov-mcp-darwin-arm64
 
 ### Trae
 
-在 Trae 的 MCP Server JSON 配置中，填写 release MCP 二进制和被追踪项目的绝对根路径：
+应在**被追踪项目内**使用项目级 MCP 配置，而不是在 Trae 的用户/全局 MCP 配置中写死某个
+项目路径。项目级配置用于声明该项目使用哪些 MCP 工具，并让 MCP server 以当前工作区作为
+项目根目录。
+
+在项目根目录创建或合并 `.mcp.json`：
 
 ~~~json
 {
   "mcpServers": {
     "ai-prov": {
-      "command": "/解压目录/ai-prov-mcp-darwin-arm64",
-      "env": {
-        "AI_PROV_PROJECT_ROOT": "/被追踪项目的绝对路径"
-      }
+      "command": "/解压目录/ai-prov-mcp-darwin-arm64"
     }
   }
 }
 ~~~
 
 先在该项目运行对应的 `ai-prov ... init`。再将 `AGENT-RULES.md` 粘贴到 Trae
-项目级 Agent Rules 中。Trae 若从应用自身目录启动 MCP server，必须设置这个环境变量；
-不再依赖 `cwd`。
+项目级 Agent Rules 中。
+
+`AI_PROV_PROJECT_ROOT` 仅是兼容性兜底：仅当某个 MCP Host 无法从项目配置以工作区目录启动
+server、也无法提供 MCP workspace root 时才设置它。不要在用户/全局 MCP 配置中为它写死
+某一个项目的路径。现代 Host 无需配置项目路径：ai-prov 会先使用项目配置的工作目录，失败时
+自动请求 Host 的 MCP workspace root。
 
 ### 其他 Agent
 

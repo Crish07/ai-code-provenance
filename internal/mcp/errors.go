@@ -70,3 +70,11 @@ func invalidArgument(format string, args ...any) *ErrorPayload {
 	msg := fmt.Sprintf(format, args...)
 	return &ErrorPayload{Code: "INVALID_ARGUMENT", Message: msg, Details: map[string]any{"field": "arguments"}}
 }
+
+func projectRootRequired(message string) *ErrorPayload {
+	return &ErrorPayload{
+		Code:    "PROJECT_ROOT_REQUIRED",
+		Message: message,
+		Details: map[string]any{"hint": "use a project-level MCP configuration or provide exactly one MCP workspace root"},
+	}
+}

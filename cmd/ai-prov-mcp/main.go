@@ -25,11 +25,7 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	mcp.Implementation.Version = versionOrElse(version, "development")
-	srv, err := mcp.BootstrapFromEnvironment(logger)
-	if err != nil {
-		logger.Error("bootstrap failed", "error", err)
-		os.Exit(1)
-	}
+	srv := mcp.NewWorkspace(logger)
 	defer srv.Cleanup()
 	logger.Info("ai-prov-mcp starting", "version", version, "commit", commit, "built_at", builtAt)
 

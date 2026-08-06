@@ -30,9 +30,8 @@ Initialize each tracked project once:
 ~~~
 
 The MCP server name is `ai-prov`; its command is the `ai-prov-mcp` binary. It
-uses stdio and needs no arguments, URL, or API key. Set
-`AI_PROV_PROJECT_ROOT` only when the MCP host does not start in the tracked
-project directory. Do not run it manually in a terminal.
+uses stdio and needs no arguments, URL, API key, or project path. Do not run
+it manually in a terminal.
 
 ## 2. Configure your agent
 
@@ -88,26 +87,31 @@ Enable `ai-prov` in Cursor MCP/Tools settings, then copy `cursor-rules.mdc` to
 
 ### Trae
 
-In Trae's MCP server JSON configuration, set the release MCP binary and the
-absolute root of the project being tracked:
+Use a **project-level** MCP configuration in the tracked project, rather than
+a global/user MCP entry. The project configuration selects the MCP tools used
+by that project and lets the server use the active workspace as its root.
+
+Create or merge the project's `.mcp.json`:
 
 ~~~json
 {
   "mcpServers": {
     "ai-prov": {
-      "command": "/extract-directory/ai-prov-mcp-darwin-arm64",
-      "env": {
-        "AI_PROV_PROJECT_ROOT": "/absolute/path/to/tracked-project"
-      }
+      "command": "/extract-directory/ai-prov-mcp-darwin-arm64"
     }
   }
 }
 ~~~
 
 Run the matching `ai-prov ... init` command in that project first. In Trae's
-project-level agent rules, paste `AGENT-RULES.md`. The environment variable is
-required when Trae launches MCP servers from its own application directory;
-`cwd` alone is no longer required.
+project-level agent rules, paste `AGENT-RULES.md`.
+
+`AI_PROV_PROJECT_ROOT` is an optional compatibility override only. Use it only
+when a legacy MCP host cannot provide a project working directory or MCP
+workspace root; do not hard-code one project's path in a global MCP
+configuration. Modern hosts require no project-path setting: ai-prov first
+uses the project configuration's working directory and otherwise requests the
+host's MCP workspace root automatically.
 
 ### Other agents
 

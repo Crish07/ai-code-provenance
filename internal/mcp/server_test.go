@@ -86,6 +86,38 @@ func TestServer_RegistersAndCallsTools(t *testing.T) {
 	}
 }
 
+func TestWorkspaceServer_DiscoversProjectFromMCPRoots(t *testing.T) {
+	root := newInitializedRoot(t)
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.Chdir(outside); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+
+	srv := NewWorkspace(nil)
+	defer srv.Cleanup()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	go func() { _ = srv.runOver(ctx, serverTransport) }()
+
+	client := mcp.NewClient(&mcp.Implementation{Name: "ai-prov-test"}, nil)
+	client.AddRoots(&mcp.Root{URI: "file://" + root})
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer session.Close()
+	res := callStart(t, session, ctx, "workspace root discovery")
+	if res.SessionID == "" || res.State != "active" {
+		t.Fatalf("session_start = %#v", res)
+	}
+}
+
 // TestServer_InvalidSchemaReturnsContractError verifies that argument
 // validation failures surface as structured INVALID_ARGUMENT errors.
 func TestServer_InvalidSchemaReturnsContractError(t *testing.T) {
