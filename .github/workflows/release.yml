@@ -1,0 +1,40 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: go.mod, cache: true }
+      - run: go test ./... && go test -race ./... && go vet ./...
+      - name: Build archives
+        run: |
+          make release VERSION="$GITHUB_REF_NAME" COMMIT="$GITHUB_SHA"
+          mkdir -p release
+          for target in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64 windows-amd64 windows-arm64; do
+            root="ai-prov-$GITHUB_REF_NAME-$target"
+            mkdir -p "release/$root/rules"
+            cp dist/ai-prov-$target* dist/ai-prov-mcp-$target* "release/$root/"
+            cp README.md README.zh.md "release/$root/"
+            cp -R rules/. "release/$root/rules/"
+            test -f "release/$root/rules/AGENTS.md"
+            test -f "release/$root/rules/AGENT-RULES.md"
+            test -f "release/$root/rules/CLAUDE.md"
+            test -f "release/$root/rules/cursor-rules.mdc"
+            test -f "release/$root/rules/README.md"
+            (cd release && zip -qr "$root.zip" "$root")
+            shasum -a 256 "release/$root.zip" >> release/SHA256SUMS.txt
+          done
+      - uses: actions/upload-artifact@v4
+        with: { name: release-assets, path: release/ }
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            release/*.zip
+            release/SHA256SUMS.txt
