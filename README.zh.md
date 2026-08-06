@@ -45,7 +45,32 @@ ai-prov status
 ai-prov debug bundle --output ai-prov-debug.zip
 ai-prov verify --scope staged --strict --json
 ai-prov report --scope staged --json
+ai-prov hook install
+ai-prov hook uninstall
 ~~~
+
+## 在 Git 提交信息中记录 AI 结果（可选）
+
+MCP 的 `session_finish` 只保存本地 provenance；它**不会**自动修改 Git 提交信息。
+如需在每次 `git commit` 时自动记录暂存区的校验结果，请在被追踪项目根目录手动安装一次：
+
+~~~sh
+ai-prov hook install
+~~~
+
+安装后，hook 会在提交时运行 staged 校验，并将结果追加到 commit message 末尾：
+
+~~~text
+AI-Contribution: 100%
+AI-Lines: 5/5
+AI-Agent: codex
+AI-Confidence: 100%
+AI-Provenance-ID: abcdef12
+~~~
+
+它不会修改提交标题；没有新增行时不会追加空记录。执行 `ai-prov hook uninstall`
+可移除该行为。将 `.ai-provenance/config.yaml` 中 `hook.write_trailer` 设为 `false`
+时，hook 仅校验，不写入提交信息。
 
 ## MCP 工具
 

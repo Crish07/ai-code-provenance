@@ -45,7 +45,35 @@ ai-prov status
 ai-prov debug bundle --output ai-prov-debug.zip
 ai-prov verify --scope staged --strict --json
 ai-prov report --scope staged --json
+ai-prov hook install
+ai-prov hook uninstall
 ~~~
+
+## Record AI results in Git commits (optional)
+
+MCP `session_finish` persists local provenance only; it does **not** change a
+Git commit message automatically. To record the staged verification result for
+every `git commit`, install the hook once from the tracked project root:
+
+~~~sh
+ai-prov hook install
+~~~
+
+The hook runs staged verification during each commit and appends this block to
+the end of the commit message:
+
+~~~text
+AI-Contribution: 100%
+AI-Lines: 5/5
+AI-Agent: codex
+AI-Confidence: 100%
+AI-Provenance-ID: abcdef12
+~~~
+
+It does not alter the commit subject, and it adds no empty record when there
+are no added lines. Run `ai-prov hook uninstall` to remove it. Set
+`hook.write_trailer: false` in `.ai-provenance/config.yaml` to keep verification
+but stop writing the commit-message block.
 
 ## MCP tools
 
