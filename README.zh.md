@@ -23,8 +23,8 @@ cd /path/to/project
 ai-prov init
 ~~~
 
-在 MCP 客户端中配置 command 为 ai-prov-mcp。Codex 复制 rules/AGENTS.md，
-Claude Code 复制 rules/CLAUDE.md，Cursor 复制 rules/cursor-rules.mdc。
+请从 release 包的 `rules/` 目录选择对应 Agent 的模板并完成 MCP 配置。具体的
+Codex、Claude Code、Cursor 配置步骤请务必查看 [rules/README.zh.md](rules/README.zh.md)。
 
 强制流程：编辑前调用 provenance.session_start；完成修改；调用
 provenance.session_finish 并确认 finished；提交前可运行：
@@ -57,12 +57,38 @@ ai-prov report --scope staged --json
 
 未初始化时运行 ai-prov init；基线冲突时重新创建 session；存储锁定时稍后重试。
 
+## 配置 Rules 与 MCP
+
+每个 release 压缩包都包含 `rules/` 目录。请选择对应 Agent 的模板，配置本地 stdio
+MCP server，并复制模板到 Agent 自动加载的指令位置。完整、可直接复制的配置集中在
+[rules/README.zh.md](rules/README.zh.md)，使用 Agent 前请务必先阅读该文档。
+
+### 需要你手动完成一次的操作
+
+1. 下载并解压与你的平台匹配的 Release 压缩包。
+2. 按 [rules/README.zh.md](rules/README.zh.md) 为 Agent 配置 `ai-prov-mcp`，并把对应
+   Rules 文件复制到项目中。
+3. 在每个需要追踪的项目根目录，用 release 包中的 `ai-prov` 二进制执行 `init`。
+
+以上是安装和首次配置操作。第 3 步只需在新项目中执行一次，不需要每次开发任务都重复。
+
+### Agent 在每个编码任务中自动执行的操作
+
+Rules 会要求 Agent 在编辑前调用 `provenance.session_start`，正常编辑代码，再调用
+`provenance.session_finish` 并确认结果为 `finished`；提交前可调用
+`provenance.verify`。你不需要手工创建 snapshot、计算 Diff 或填写行数。
+
+### ai-prov 工具自动完成的操作
+
+本地 MCP server 会自动创建基线 snapshot、计算真实工作区 Diff、将 provenance
+记录到 `.ai-provenance/`，并返回 session 结果。源码和 provenance 数据始终保留在本地。
+
 ## 安装与反馈
 
 从 [Releases](https://github.com/Crish07/ai-code-provenance/releases) 下载与操作系统和 CPU
-架构匹配的压缩包。先用 `SHA256SUMS.txt` 校验，再解压并将解压目录加入 `PATH`。
-Windows 请使用 `.exe` 二进制；若无法配置 `PATH`，请在 MCP 客户端中填写
-`ai-prov-mcp.exe` 的完整路径。
+架构匹配的压缩包。先用 `SHA256SUMS.txt` 校验，再解压。压缩包中的二进制带平台后缀，
+请直接使用完整路径，或按「在 Agent 中配置本地 MCP」一节重命名后再加入 `PATH`。
+Windows 请使用 `.exe` 二进制，并在 MCP 客户端中填写其完整路径。
 
 离线或企业内网发布时，请将已校验的 Release 压缩包和对应的
 `SHA256SUMS.txt` 原样镜像到批准的制品仓库。运行时不需要服务端、网络连接、

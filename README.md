@@ -25,9 +25,9 @@ cd /path/to/project
 ai-prov init
 ~~~
 
-Configure an MCP client with command ai-prov-mcp, then copy the matching
-template from rules: AGENTS.md for Codex, CLAUDE.md for Claude Code, or
-cursor-rules.mdc for Cursor.
+Configure MCP and install the matching agent rule from the release `rules/`
+directory. See the [Rules configuration guide](rules/README.md) for the exact
+Codex, Claude Code, and Cursor steps.
 
 Required flow: call provenance.session_start before editing; make changes;
 call provenance.session_finish and require finished; optionally run
@@ -58,13 +58,45 @@ ai-prov report --scope staged --json
 Run ai-prov init for an uninitialized project, create a new session after a
 baseline conflict, and retry after a storage lock.
 
+## Configure rules and MCP
+
+Every release archive includes a `rules/` directory. Select the template for
+your agent, configure the local stdio MCP server, and copy the template to its
+automatic instruction location. The complete, copyable configuration is kept
+in [rules/README.md](rules/README.md); read it before using ai-prov with an
+agent.
+
+### What you do once
+
+1. Download and unzip the matching release archive.
+2. Follow [rules/README.md](rules/README.md) to add `ai-prov-mcp` to your
+   agent and copy that agent's rule file into the project.
+3. Run the release `ai-prov` binary with `init` in each project you want to
+   track.
+
+These are manual installation and configuration steps. You must repeat step 3
+only for a new project, not for every task.
+
+### What the agent does for every coding task
+
+The rule file makes the agent call `provenance.session_start` before editing,
+edit normally, then call `provenance.session_finish` and require `finished`.
+The agent may call `provenance.verify` before committing. You do not need to
+create snapshots, calculate diffs, or enter line counts yourself.
+
+### What ai-prov does automatically
+
+The local MCP server creates the baseline snapshot, calculates the actual
+workspace diff, records provenance in `.ai-provenance/`, and returns the
+session result. All source code and provenance data remain local.
+
 ## Installation and support
 
 Download the archive matching your operating system and CPU from
 [Releases](https://github.com/Crish07/ai-code-provenance/releases). Verify it
-against `SHA256SUMS.txt`, unzip it, and add the extracted directory to `PATH`.
-On Windows, use the `.exe` binaries and configure the MCP client with the full
-path to `ai-prov-mcp.exe` when `PATH` is unavailable.
+against `SHA256SUMS.txt`, then unzip it. Use the platform-suffixed binaries by
+absolute path, or rename them before adding their directory to `PATH`. On
+Windows, use the full `.exe` path in the MCP client configuration.
 
 For offline or internal distribution, mirror one verified release archive and
 its matching `SHA256SUMS.txt` in the approved artifact repository. Install it

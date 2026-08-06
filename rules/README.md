@@ -1,54 +1,98 @@
-# Agent Rules and MCP Configuration
+# Agent Rules Configuration
 
-These public templates require coding agents to create and finish an
-ai-prov provenance session around tracked source changes.
+This directory is included in every release archive. Configure the local MCP
+server first, then copy the matching rule file to the project being tracked.
 
-[中文说明](README.zh.md)
+## Responsibility boundary
 
-## Choose a template
+**You configure once:** download the release, add the MCP server, copy one rule
+file, and run `ai-prov init` in each new tracked project.
 
-| Agent | Source | Destination |
-| --- | --- | --- |
-| Codex | AGENTS.md | project-root AGENTS.md |
-| Claude Code | CLAUDE.md | project-root CLAUDE.md |
-| Cursor | cursor-rules.mdc | .cursor/rules/ai-prov.mdc |
-| Any compatible agent | AGENT-RULES.md | Its automatic instruction file or rules directory |
+**The agent does per task:** starts a session before edits and finishes it
+after edits. The copied rule file enforces this.
 
-Use AGENT-RULES.md when the agent is not listed above. Copy it to the file or
-directory that the agent loads automatically; do not paste it only into an
-interactive prompt.
+**ai-prov does automatically:** creates snapshots, computes diffs, and stores
+local provenance. Do not supply snapshots, diffs, or line counts yourself.
 
-## Required protocol
+## 1. Use the release binaries
 
-1. Run ai-prov init once in the tracked project.
-2. Call provenance.session_start before editing.
-3. Edit through any supported agent capability.
-4. Call provenance.session_finish and require finished.
-5. Optionally verify staged changes before committing.
+The binaries have platform suffixes. Prefer their absolute paths, for example:
 
-Start or finish failure means the task is incomplete. Do not bypass the
-protocol. Unrecorded lines are never AI code.
+~~~text
+/extract-directory/ai-prov-darwin-arm64
+/extract-directory/ai-prov-mcp-darwin-arm64
+~~~
 
-## MCP configuration
+Initialize each tracked project once:
 
-Every client needs a stdio server named ai-prov with command ai-prov-mcp:
+~~~sh
+/extract-directory/ai-prov-darwin-arm64 init
+~~~
+
+The MCP server name is `ai-prov`; its command is the `ai-prov-mcp` binary. It
+uses stdio and needs no arguments, URL, API key, or environment variables.
+Do not run it manually in a terminal.
+
+## 2. Configure your agent
+
+### Codex
+
+Add this to the repository `.codex/config.toml`, or run the command below:
+
+~~~toml
+[mcp_servers.ai-prov]
+command = "/extract-directory/ai-prov-mcp-darwin-arm64"
+~~~
+
+~~~sh
+codex mcp add ai-prov -- /extract-directory/ai-prov-mcp-darwin-arm64
+~~~
+
+Copy `AGENTS.md` to the tracked project root as `AGENTS.md`.
+
+### Claude Code
+
+Create or merge the tracked project's `.mcp.json`:
 
 ~~~json
 {
   "mcpServers": {
-    "ai-prov": { "command": "ai-prov-mcp" }
+    "ai-prov": {
+      "command": "/extract-directory/ai-prov-mcp-darwin-arm64"
+    }
   }
 }
 ~~~
 
-Use the complete tool names: provenance.session_start,
-provenance.session_finish, and provenance.verify. stdout is reserved for the
-MCP protocol; diagnostics go to stderr.
+Alternatively run
+`claude mcp add --transport stdio ai-prov -- /extract-directory/ai-prov-mcp-darwin-arm64`.
+Copy `CLAUDE.md` to the tracked project root.
 
-## Recovery
+### Cursor
 
-- PROJECT_NOT_INITIALIZED: run ai-prov init.
-- SESSION_BASELINE_CONFLICT: discard the current session and start a new one.
-- STORAGE_LOCKED: retry later.
+Create or merge `.cursor/mcp.json` in the tracked project:
 
-See the root README for installation and commands.
+~~~json
+{
+  "mcpServers": {
+    "ai-prov": {
+      "command": "/extract-directory/ai-prov-mcp-darwin-arm64"
+    }
+  }
+}
+~~~
+
+Enable `ai-prov` in Cursor MCP/Tools settings, then copy `cursor-rules.mdc` to
+`.cursor/rules/ai-prov.mdc`.
+
+### Other agents
+
+Configure an stdio MCP server named `ai-prov` using the same command, then
+copy `AGENT-RULES.md` to that agent's automatic instruction location.
+
+## 3. Verify
+
+Restart the agent or start a new session. It must expose
+`provenance.session_start`, `provenance.session_finish`, and
+`provenance.verify`. `PROJECT_NOT_INITIALIZED` means that the CLI `init`
+command has not run in the tracked project.
