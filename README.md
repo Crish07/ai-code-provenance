@@ -72,4 +72,4 @@ both binaries, this README, and rules.
 
 ## License
 
-License selection is pending.
+This project is licensed under the [MIT License](LICENSE).

@@ -20,7 +20,7 @@ jobs:
             root="ai-prov-$GITHUB_REF_NAME-$target"
             mkdir -p "release/$root/rules"
             cp dist/ai-prov-$target* dist/ai-prov-mcp-$target* "release/$root/"
-            cp README.md README.zh.md "release/$root/"
+            cp README.md README.zh.md LICENSE "release/$root/"
             cp -R rules/. "release/$root/rules/"
             test -f "release/$root/rules/AGENTS.md"
             test -f "release/$root/rules/AGENT-RULES.md"
