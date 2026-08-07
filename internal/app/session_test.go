@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -84,6 +85,39 @@ func TestServiceFinish_RecordsEdit(t *testing.T) {
 	r, e := s.Finish(context.Background(), start.SessionID)
 	if e != nil || r.ChangedFiles != 1 || r.AddedLines != 1 {
 		t.Fatalf("%#v %v", r, e)
+	}
+}
+
+func TestServiceFinish_HashSkipsUnchangedLargeFile(t *testing.T) {
+	root := t.TempDir()
+	large := filepath.Join(root, "unchanged.txt")
+	var content strings.Builder
+	for i := 0; i < 2_000; i++ {
+		content.WriteString("unchanged line\n")
+	}
+	if e := os.WriteFile(large, []byte(content.String()), 0o644); e != nil {
+		t.Fatal(e)
+	}
+	changedPath := filepath.Join(root, "changed.go")
+	if e := os.WriteFile(changedPath, []byte("package changed\n"), 0o644); e != nil {
+		t.Fatal(e)
+	}
+	db, e := storage.Open(filepath.Join(root, "db.sqlite"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	s := Service{root, 1 << 20, db}
+	start, e := s.Start(context.Background(), StartRequest{Task: "small edit"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = os.WriteFile(changedPath, []byte("package changed\n// edited\n"), 0o644); e != nil {
+		t.Fatal(e)
+	}
+	result, e := s.Finish(context.Background(), start.SessionID)
+	if e != nil || result.ChangedFiles != 1 || result.Changes[0].Path != "changed.go" {
+		t.Fatalf("finish = %#v, err = %v", result, e)
 	}
 }
 

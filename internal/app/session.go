@@ -84,13 +84,25 @@ func (s Service) Finish(ctx context.Context, id string) (FinishResult, error) {
 	var lines []storage.LineProvenance
 	var changes []FileChange
 	for _, f := range m.Files {
+		after, readErr := os.ReadFile(filepath.Join(s.Root, filepath.FromSlash(f.Path)))
+		currentExists := readErr == nil
+		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+			_ = s.Store.FailSession(ctx, id, "SNAPSHOT_FAILED", readErr.Error())
+			return FinishResult{}, fmt.Errorf("%w: %v", ErrSnapshotFailed, readErr)
+		}
+		after = snapshot.Normalize(after)
+		// Most files in a coding task are unchanged. Comparing the saved
+		// content hash is O(file size) and avoids O(lines²) Diff allocation.
+		if currentExists && snapshot.Matches(after, f.Hash) {
+			continue
+		}
+
 		before, e := os.ReadFile(filepath.Join(s.Root, ".ai-provenance", "snapshots", v.SnapshotID, filepath.FromSlash(f.Path)))
 		if e != nil {
 			_ = s.Store.FailSession(ctx, id, "SNAPSHOT_FAILED", e.Error())
 			return FinishResult{}, fmt.Errorf("%w: %v", ErrSnapshotFailed, e)
 		}
-		after, _ := os.ReadFile(filepath.Join(s.Root, filepath.FromSlash(f.Path)))
-		ed := diff.Diff(string(before), string(snapshot.Normalize(after)))
+		ed := diff.Diff(string(before), string(after))
 		if diff.HasChanges(ed) {
 			conflict, err := s.Store.HasFinishedChangeSince(ctx, f.Path, id, v.StartedAt)
 			if err != nil {

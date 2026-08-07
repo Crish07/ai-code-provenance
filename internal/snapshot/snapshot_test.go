@@ -49,3 +49,13 @@ func TestCreate_NormalizesLineEndings(t *testing.T) {
 		t.Fatal("line endings changed hash")
 	}
 }
+
+func TestMatches_UsesCanonicalContentHash(t *testing.T) {
+	baseline := Normalize([]byte("a\r\nb\r\n"))
+	if !Matches(Normalize([]byte("a\nb\n")), Hash(baseline)) {
+		t.Fatal("equivalent line endings should match")
+	}
+	if Matches(Normalize([]byte("a\nc\n")), Hash(baseline)) {
+		t.Fatal("changed content should not match")
+	}
+}

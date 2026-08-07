@@ -30,8 +30,7 @@ func Create(root, id string, max int64) (Manifest, error) {
 	m := Manifest{ID: id, SkippedCount: len(skipped)}
 	for _, f := range files {
 		data := Normalize(f.Data)
-		h := sha256.Sum256(data)
-		m.Files = append(m.Files, File{f.Path, hex.EncodeToString(h[:])})
+		m.Files = append(m.Files, File{f.Path, Hash(data)})
 		p := filepath.Join(dir, filepath.FromSlash(f.Path))
 		if err = os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			return Manifest{}, err
@@ -63,6 +62,18 @@ func Create(root, id string, max int64) (Manifest, error) {
 	return m, nil
 }
 
+// Hash returns the SHA-256 of canonical snapshot content.
+func Hash(data []byte) string {
+	h := sha256.Sum256(data)
+	return hex.EncodeToString(h[:])
+}
+
+// Matches reports whether current canonical content is identical to the
+// manifest entry. Finish uses it as a fast path before allocating a line diff.
+func Matches(data []byte, expectedHash string) bool {
+	return Hash(data) == expectedHash
+}
+
 // Normalize produces the canonical text representation used on both sides of
 // a provenance diff. Keeping this operation shared prevents an unchanged CRLF
 // file from differing from its LF-normalized snapshot at session finish.
@@ -76,8 +87,7 @@ func Verify(root string, m Manifest) bool {
 		if e != nil {
 			return false
 		}
-		h := sha256.Sum256(b)
-		if hex.EncodeToString(h[:]) != f.Hash {
+		if !Matches(b, f.Hash) {
 			return false
 		}
 	}
