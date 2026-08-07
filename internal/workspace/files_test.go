@@ -34,3 +34,23 @@ func TestScan_FiltersAndSortsFiles(t *testing.T) {
 		t.Fatalf("skipped=%#v", skipped)
 	}
 }
+
+func TestScan_SkipsAgentMetadataDirectories(t *testing.T) {
+	root := t.TempDir()
+	for _, path := range []string{"main.go", ".agents/docs/guide.md", ".trae/rules/ai-prov.md"} {
+		full := filepath.Join(root, path)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("text"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files, _, err := Scan(root, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 1 || files[0].Path != "main.go" {
+		t.Fatalf("files = %#v, want only main.go", files)
+	}
+}

@@ -14,7 +14,8 @@ task is incomplete and must be reported.
 5. Optionally verify staged changes in strict mode before commit.
 
 Only provenance.session_start, provenance.session_finish, and
-provenance.verify are valid tool names.
+provenance.verify are valid tool names. Call provenance.support to obtain the
+repository and GitHub Issue URL for a reproducible tool problem.
 
 ## Failure and prohibitions
 

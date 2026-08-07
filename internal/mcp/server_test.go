@@ -45,8 +45,8 @@ func TestServer_RegistersAndCallsTools(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list tools: %v", err)
 	}
-	if !hasTool(list.Tools, "provenance.session_start") || !hasTool(list.Tools, "provenance.session_finish") {
-		t.Fatalf("tools = %#v, want both provenance tools registered", toolNames(list.Tools))
+	if !hasTool(list.Tools, "provenance.session_start") || !hasTool(list.Tools, "provenance.session_finish") || !hasTool(list.Tools, "provenance.support") {
+		t.Fatalf("tools = %#v, want provenance tools registered", toolNames(list.Tools))
 	}
 
 	startRes, err := session.CallTool(ctx, &mcp.CallToolParams{
@@ -83,6 +83,32 @@ func TestServer_RegistersAndCallsTools(t *testing.T) {
 	decodeStructured(t, finishRes.StructuredContent, &finishOut)
 	if finishOut.State != "finished" || finishOut.SessionID != startOut.SessionID {
 		t.Fatalf("session_finish output = %#v", finishOut)
+	}
+}
+
+func TestServer_SupportReturnsIssueDestination(t *testing.T) {
+	root := newInitializedRoot(t)
+	store := openStore(t, root)
+	defer store.Close()
+	srv := New(&app.Service{Root: root, MaxFileBytes: config.DefaultMaxFileBytes, Store: store}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	go func() { _ = srv.runOver(ctx, serverTransport) }()
+	client := mcp.NewClient(&mcp.Implementation{Name: "ai-prov-test"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "provenance.support", Arguments: map[string]any{}})
+	if err != nil || res.IsError {
+		t.Fatalf("support = %#v, err = %v", res, err)
+	}
+	var out supportOutput
+	decodeStructured(t, res.StructuredContent, &out)
+	if out.RepositoryURL != SupportRepositoryURL || out.IssuesURL != SupportIssuesURL {
+		t.Fatalf("support = %#v", out)
 	}
 }
 

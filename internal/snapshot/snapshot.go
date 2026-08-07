@@ -29,7 +29,7 @@ func Create(root, id string, max int64) (Manifest, error) {
 	}
 	m := Manifest{ID: id, SkippedCount: len(skipped)}
 	for _, f := range files {
-		data := []byte(strings.ReplaceAll(string(f.Data), "\r\n", "\n"))
+		data := Normalize(f.Data)
 		h := sha256.Sum256(data)
 		m.Files = append(m.Files, File{f.Path, hex.EncodeToString(h[:])})
 		p := filepath.Join(dir, filepath.FromSlash(f.Path))
@@ -62,6 +62,14 @@ func Create(root, id string, max int64) (Manifest, error) {
 	}
 	return m, nil
 }
+
+// Normalize produces the canonical text representation used on both sides of
+// a provenance diff. Keeping this operation shared prevents an unchanged CRLF
+// file from differing from its LF-normalized snapshot at session finish.
+func Normalize(data []byte) []byte {
+	return []byte(strings.ReplaceAll(string(data), "\r\n", "\n"))
+}
+
 func Verify(root string, m Manifest) bool {
 	for _, f := range m.Files {
 		b, e := os.ReadFile(filepath.Join(root, ".ai-provenance", "snapshots", m.ID, filepath.FromSlash(f.Path)))

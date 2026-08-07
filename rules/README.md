@@ -1,15 +1,18 @@
 # Agent Rules Configuration
 
-This directory is included in every release archive. Configure the local MCP
-server first, then copy the matching rule file to the project being tracked.
+This directory is included in every release archive. It is a template source,
+not an automatically loaded rules directory. Configure the local MCP server,
+then ask the coding agent that will work on the project to identify its own
+automatic rules location and copy the matching rule file there.
 
 ## Responsibility boundary
 
-**You configure once:** download the release, add the MCP server, copy one rule
-file, and run `ai-prov init` in each new tracked project.
+**You configure once:** download the release, add the MCP server, let your
+agent install one rule file into its actual automatic rules location, and run
+`ai-prov init` in each new tracked project.
 
 **The agent does per task:** starts a session before edits and finishes it
-after edits. The copied rule file enforces this.
+after edits. This only applies after the host confirms that it loaded the rule.
 
 **ai-prov does automatically:** creates snapshots, computes diffs, and stores
 local provenance. Do not supply snapshots, diffs, or line counts yourself.
@@ -34,6 +37,15 @@ uses stdio and needs no arguments, URL, API key, or project path. Do not run
 it manually in a terminal.
 
 ## 2. Configure your agent
+
+Before following a host-specific section, give your coding agent this request:
+
+~~~text
+Read <release-directory>/rules/README.md. Identify the rules directory that
+your host automatically loads for this workspace. Install the matching ai-prov
+rule there, configure ai-prov MCP, and show the host's loaded-rule list. The
+release rules directory is not itself an automatically loaded location.
+~~~
 
 ### Codex
 
@@ -93,7 +105,10 @@ Create or merge `.trae/mcp.json` in the project root:
 {
   "mcpServers": {
     "ai-prov": {
-      "command": "/extract-directory/ai-prov-mcp-darwin-arm64"
+      "command": "/extract-directory/ai-prov-mcp-darwin-arm64",
+      "env": {
+        "AI_PROV_PROJECT_ROOT": "${workspaceFolder}"
+      }
     }
   }
 }
@@ -102,9 +117,14 @@ Create or merge `.trae/mcp.json` in the project root:
 Then:
 
 1. Run the matching `ai-prov ... init` command in the project root.
-2. Paste `AGENT-RULES.md` into Trae's project-level agent rules.
-3. Restart Trae or start a new agent conversation and confirm the three
-   `provenance.*` tools are available.
+2. Ask Trae Agent to identify the directory shown in its loaded workspace
+   rules, then copy `AGENT-RULES.md` there. Do not assume `.trae/rules/` is
+   injected merely because the file exists there.
+3. Restart Trae or start a new agent conversation. Confirm both the loaded
+   rule list and the three `provenance.*` tools are available.
+
+Keep `AI_PROV_PROJECT_ROOT` set to `${workspaceFolder}`; do not replace it
+with a fixed project path.
 
 ### Qoder
 
@@ -134,5 +154,7 @@ copy `AGENT-RULES.md` to that agent's automatic instruction location.
 
 Restart the agent or start a new session. It must expose
 `provenance.session_start`, `provenance.session_finish`, and
-`provenance.verify`. `PROJECT_NOT_INITIALIZED` means that the CLI `init`
+`provenance.verify`, plus `provenance.support`. `provenance.support` returns
+the public repository and GitHub Issue URL for a reproducible tool problem.
+`PROJECT_NOT_INITIALIZED` means that the CLI `init`
 command has not run in the tracked project.

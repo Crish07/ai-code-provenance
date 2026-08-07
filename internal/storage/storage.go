@@ -104,7 +104,7 @@ func (s *Store) SaveLineProvenance(ctx context.Context, v LineProvenance) error 
 	_, err := s.db.ExecContext(ctx, "INSERT INTO line_provenance(id,file_path,line_identity,content_hash,source,origin_session_id,created_at) VALUES (?,?,?,?,?,?,?)", v.ID, v.FilePath, v.LineIdentity, v.ContentHash, v.Source, v.OriginSessionID, v.CreatedAt)
 	return mapError(err)
 }
-func Now() string { return time.Now().UTC().Format(time.RFC3339) }
+func Now() string { return time.Now().UTC().Format(time.RFC3339Nano) }
 
 // Migrate applies all schema changes transactionally and is idempotent.
 func (s *Store) Migrate(ctx context.Context) error {
@@ -172,9 +172,13 @@ func (s *Store) FailSession(ctx context.Context, id, code, message string) error
 	_, err := s.db.ExecContext(ctx, "UPDATE ai_session SET state='failed', finished_at=?, failure_code=?, failure_message=? WHERE id=? AND state='active'", Now(), code, message, id)
 	return mapError(err)
 }
-func (s *Store) HasFinishedChange(ctx context.Context, path, except string) (bool, error) {
+
+// HasFinishedChangeSince reports whether another session finished a change to
+// path after the current session began. Historical changes from before that
+// baseline are intentionally irrelevant and must not create a conflict.
+func (s *Store) HasFinishedChangeSince(ctx context.Context, path, except, startedAt string) (bool, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM ai_change_event e JOIN ai_session s ON s.id=e.session_id WHERE e.file_path=? AND e.session_id<>? AND s.state='finished'", path, except).Scan(&n)
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM ai_change_event e JOIN ai_session s ON s.id=e.session_id WHERE e.file_path=? AND e.session_id<>? AND s.state='finished' AND s.finished_at IS NOT NULL AND s.finished_at>?", path, except, startedAt).Scan(&n)
 	return n > 0, mapError(err)
 }
 

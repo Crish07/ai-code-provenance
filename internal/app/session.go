@@ -49,7 +49,7 @@ func (s Service) Start(ctx context.Context, r StartRequest) (StartResult, error)
 	if e != nil {
 		return StartResult{}, e
 	}
-	startedAt := time.Now().UTC().Format(time.RFC3339)
+	startedAt := time.Now().UTC().Format(time.RFC3339Nano)
 	agent := r.Agent
 	if agent == "" {
 		agent = "unknown"
@@ -90,9 +90,9 @@ func (s Service) Finish(ctx context.Context, id string) (FinishResult, error) {
 			return FinishResult{}, fmt.Errorf("%w: %v", ErrSnapshotFailed, e)
 		}
 		after, _ := os.ReadFile(filepath.Join(s.Root, filepath.FromSlash(f.Path)))
-		ed := diff.Diff(string(before), string(after))
-		if diff.Hash(ed) != diff.Hash(nil) {
-			conflict, err := s.Store.HasFinishedChange(ctx, f.Path, id)
+		ed := diff.Diff(string(before), string(snapshot.Normalize(after)))
+		if diff.HasChanges(ed) {
+			conflict, err := s.Store.HasFinishedChangeSince(ctx, f.Path, id, v.StartedAt)
 			if err != nil {
 				return FinishResult{}, err
 			}

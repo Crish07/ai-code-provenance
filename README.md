@@ -25,9 +25,10 @@ cd /path/to/project
 ai-prov init
 ~~~
 
-Configure MCP and install the matching agent rule from the release `rules/`
-directory. See the [Rules configuration guide](rules/README.md) for the exact
-Codex, Claude Code, and Cursor steps.
+Configure MCP, then ask your coding agent to read the release `rules/`
+directory and install the matching rule in **its own automatically loaded
+rules location**. Do not assume that copying a file to a similarly named
+directory makes the host load it. See the [Rules configuration guide](rules/README.md).
 
 Required flow: call provenance.session_start before editing; make changes;
 call provenance.session_finish and require finished; optionally run
@@ -82,35 +83,50 @@ but stop writing the commit-message block.
 | provenance.session_start | Create a session and baseline snapshot. |
 | provenance.session_finish | Compute a local diff and persist provenance. |
 | provenance.verify | Verify staged or worktree additions. |
+| provenance.support | Return the public repository and GitHub issue URL. |
 
 Run ai-prov init for an uninitialized project, create a new session after a
 baseline conflict, and retry after a storage lock.
 
 ## Configure rules and MCP
 
-Every release archive includes a `rules/` directory. Select the template for
-your agent, configure the local stdio MCP server, and copy the template to its
-automatic instruction location. The complete, copyable configuration is kept
-in [rules/README.md](rules/README.md); read it before using ai-prov with an
-agent.
+Every release archive includes a `rules/` directory. First configure the local
+stdio MCP server. Then let the agent that will use ai-prov read
+`rules/README.md`, identify its own automatic rules location, and copy the
+matching template there. The release directory is a source of templates; it is
+not automatically loaded by every host. The complete, copyable configuration
+is kept in [rules/README.md](rules/README.md). Trae users must use its
+`${workspaceFolder}` MCP configuration.
 
 ### What you do once
 
 1. Download and unzip the matching release archive.
-2. Follow [rules/README.md](rules/README.md) to add `ai-prov-mcp` to your
-   agent and copy that agent's rule file into the project.
+2. Ask your agent to read [rules/README.md](rules/README.md), add
+   `ai-prov-mcp`, and copy the matching rule file into the location that its
+   host actually auto-loads.
 3. Run the release `ai-prov` binary with `init` in each project you want to
    track.
+
+Use this prompt if the host's rule location is unfamiliar:
+
+~~~text
+Read <release-directory>/rules/README.md. Identify the rules directory that
+your host automatically injects for this workspace. Copy the matching ai-prov
+rule file there, configure the ai-prov MCP server, and show which loaded-rule
+list proves the rule is active. Do not treat <release-directory>/rules/ itself
+as an automatically loaded directory.
+~~~
 
 These are manual installation and configuration steps. You must repeat step 3
 only for a new project, not for every task.
 
 ### What the agent does for every coding task
 
-The rule file makes the agent call `provenance.session_start` before editing,
-edit normally, then call `provenance.session_finish` and require `finished`.
-The agent may call `provenance.verify` before committing. You do not need to
-create snapshots, calculate diffs, or enter line counts yourself.
+After the host confirms that it loaded the rule, the agent must call
+`provenance.session_start` before editing, edit normally, then call
+`provenance.session_finish` and require `finished`. The agent may call
+`provenance.verify` before committing. You do not need to create snapshots,
+calculate diffs, or enter line counts yourself.
 
 ### What ai-prov does automatically
 

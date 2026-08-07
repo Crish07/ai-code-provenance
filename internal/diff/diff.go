@@ -108,6 +108,18 @@ func Hash(edits []Edit) string {
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
+
+// HasChanges reports whether an edit script contains an insertion or deletion.
+// Equal edits describe an unchanged file and must not be treated as a diff.
+func HasChanges(edits []Edit) bool {
+	for _, edit := range edits {
+		if edit.Op != Equal {
+			return true
+		}
+	}
+	return false
+}
+
 func Renames(deleted, added map[string]string) map[string]string {
 	out := map[string]string{}
 	for old, h := range deleted {

@@ -21,13 +21,17 @@ All tracked source-code changes MUST be recorded through ai-prov MCP.
    strict enabled.
 
 Only the complete tool names provenance.session_start,
-provenance.session_finish, and provenance.verify are valid.
+provenance.session_finish, provenance.verify, and provenance.support are valid.
 
 ## Failure handling
 
 - PROJECT_NOT_INITIALIZED: run ai-prov init.
 - SESSION_BASELINE_CONFLICT: discard the current session and start a new one.
 - STORAGE_LOCKED: retry later.
+
+For a reproducible ai-prov tool problem, call `provenance.support` to obtain
+the repository and GitHub Issue URL. Report the URL and sanitized reproduction
+details to the user; do not submit an Issue without user authorization.
 
 Report the returned error code and message to the user. Unrecorded lines are
 never AI code.

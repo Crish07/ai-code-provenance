@@ -17,7 +17,8 @@ model; edit; finish using the returned session ID; optionally call
 provenance.verify for staged strict verification before commit.
 
 Only provenance.session_start, provenance.session_finish, and
-provenance.verify are valid tool names. Do not edit before start, skip finish,
+provenance.verify are valid tool names. Call provenance.support to obtain the
+repository and GitHub Issue URL for a reproducible tool problem. Do not edit before start, skip finish,
 submit client-generated diffs as facts, or manually commit between start and
 finish. Unrecorded lines are never AI code.
 

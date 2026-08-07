@@ -1,15 +1,16 @@
 # Agent Rules 配置说明
 
-本目录会随每个 Release 压缩包分发。请先配置本地 MCP server，再将对应的规则文件复制到
-被追踪项目中。
+本目录会随每个 Release 压缩包分发，但它只是 Rules 模板来源，不是必然会被 Agent 自动加载的
+目录。请先配置本地 MCP server，再让实际开发 Agent 识别其自动加载 Rules 的目录，并将对应规则
+文件复制到那里。
 
 ## 责任边界
 
-**你只需首次手动完成：** 下载 Release、添加 MCP server、复制一个 Rules 文件，并在每个
-新项目中执行一次 `ai-prov init`。
+**你只需首次手动完成：** 下载 Release、添加 MCP server、让 Agent 将一个 Rules 文件安装到它
+实际自动加载的位置，并在每个新项目中执行一次 `ai-prov init`。
 
-**Agent 每个任务自动执行：** 编辑前创建 session，编辑后完成 session；复制的 Rules 文件
-会强制该流程。
+**Agent 每个任务自动执行：** 编辑前创建 session，编辑后完成 session；前提是 Host 已确认
+自动加载了该 Rules 文件。
 
 **ai-prov 自动完成：** 创建 snapshot、计算 Diff、保存本地 provenance。你不需要手工提供
 snapshot、Diff 或行数。
@@ -33,6 +34,14 @@ MCP server 名称固定为 `ai-prov`，command 为 `ai-prov-mcp` 二进制；它
 不需要参数、URL、API Key 或项目路径。不要在终端中手工运行该二进制。
 
 ## 2. 配置对应 Agent
+
+进入具体 Agent 配置前，可直接将以下内容发送给你的开发 Agent：
+
+~~~text
+请阅读 <release 解压目录>/rules/README.zh.md。识别你所在 Agent 在当前 workspace 中会自动
+加载的 Rules 目录；将对应 ai-prov Rules 文件复制到该目录；配置 ai-prov MCP；并展示 Host 的
+已加载 Rules 列表，证明规则已生效。不要将 <release 解压目录>/rules/ 视为自动加载目录。
+~~~
 
 ### Codex
 
@@ -92,7 +101,10 @@ codex mcp add ai-prov -- /解压目录/ai-prov-mcp-darwin-arm64
 {
   "mcpServers": {
     "ai-prov": {
-      "command": "/解压目录/ai-prov-mcp-darwin-arm64"
+      "command": "/解压目录/ai-prov-mcp-darwin-arm64",
+      "env": {
+        "AI_PROV_PROJECT_ROOT": "${workspaceFolder}"
+      }
     }
   }
 }
@@ -101,8 +113,11 @@ codex mcp add ai-prov -- /解压目录/ai-prov-mcp-darwin-arm64
 然后完成以下操作：
 
 1. 在项目根目录运行对应的 `ai-prov ... init`。
-2. 将 `AGENT-RULES.md` 粘贴到 Trae 的项目级 Agent Rules。
-3. 重启 Trae 或新开 Agent 会话，确认出现三个 `provenance.*` 工具。
+2. 让 Trae Agent 根据它展示的 workspace 已加载 Rules 列表，识别实际目录后，再将
+   `AGENT-RULES.md` 复制到该目录。文件位于 `.trae/rules/` 不等于 Trae 已自动注入它。
+3. 重启 Trae 或新开 Agent 会话，同时确认已加载 Rules 列表和三个 `provenance.*` 工具。
+
+`AI_PROV_PROJECT_ROOT` 必须保留为 `${workspaceFolder}`，不要替换为固定项目路径。
 
 ### Qoder
 
@@ -130,5 +145,7 @@ codex mcp add ai-prov -- /解压目录/ai-prov-mcp-darwin-arm64
 ## 3. 验证
 
 重启 Agent 或新开会话，应能看到 `provenance.session_start`、
-`provenance.session_finish`、`provenance.verify` 三个工具。
+`provenance.session_finish`、`provenance.verify` 和 `provenance.support` 四个工具。
+`provenance.support` 返回公开仓库和 GitHub Issue 地址，供 Agent 在可复现工具问题时向用户提供
+正确的提交入口。
 出现 `PROJECT_NOT_INITIALIZED` 时，表示尚未在被追踪项目运行 CLI 的 `init` 命令。

@@ -16,7 +16,9 @@ All tracked source-code changes MUST be recorded through ai-prov MCP.
 4. Call provenance.session_finish with the returned session ID.
 5. Before commit, optionally call provenance.verify with staged and strict.
 
-Use the full tool names above. Short names such as session_start are invalid.
+Use the full tool names above. `provenance.support` returns the repository and
+GitHub Issue URL for reproducible tool problems. Short names such as
+session_start are invalid.
 
 ## Failure handling
 

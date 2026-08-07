@@ -105,7 +105,7 @@ func loadIgnores(root string) func(string) bool {
 func hiddenDir(path string) bool {
 	first := strings.Split(path, "/")[0]
 	switch first {
-	case ".git", ".ai-provenance", "node_modules", "vendor", "dist", "build":
+	case ".git", ".ai-provenance", ".agents", ".claude", ".codex", ".cursor", ".trae", "node_modules", "vendor", "dist", "build":
 		return true
 	}
 	return false

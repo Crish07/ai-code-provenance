@@ -86,6 +86,35 @@ func TestServiceFinish_RecordsEdit(t *testing.T) {
 		t.Fatalf("%#v %v", r, e)
 	}
 }
+
+func TestServiceFinish_ChinesePathWithCRLFAndNoEdit(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "docs")
+	if e := os.MkdirAll(dir, 0o755); e != nil {
+		t.Fatal(e)
+	}
+	path := filepath.Join(dir, "瑞达AI协作执行手册.md")
+	if e := os.WriteFile(path, []byte("# 手册\r\n\r\n内容\r\n"), 0o644); e != nil {
+		t.Fatal(e)
+	}
+	db, e := storage.Open(filepath.Join(root, "db.sqlite"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	s := Service{root, 100, db}
+	start, e := s.Start(context.Background(), StartRequest{Task: "no edit"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if start.TrackedFiles != 1 {
+		t.Fatalf("tracked files = %d, want Chinese path tracked", start.TrackedFiles)
+	}
+	result, e := s.Finish(context.Background(), start.SessionID)
+	if e != nil || result.State != "finished" || result.ChangedFiles != 0 {
+		t.Fatalf("finish = %#v, err = %v", result, e)
+	}
+}
 func TestServiceFinish_FailsForMissingSnapshot(t *testing.T) {
 	root := t.TempDir()
 	if e := os.WriteFile(filepath.Join(root, "a.go"), []byte("x"), 0o644); e != nil {

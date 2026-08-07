@@ -17,6 +17,11 @@ import (
 // validation, so the structured ErrorPayload shape is preserved on failures
 // (the SDK's own validation would only surface a text error).
 var (
+	supportInputSchema = json.RawMessage(`{
+  "type": "object",
+  "additionalProperties": false
+}`)
+
 	sessionStartInputSchema = json.RawMessage(`{
   "type": "object",
   "required": ["task"],
@@ -62,6 +67,18 @@ type sessionStartOutput struct {
 	SkippedFiles int    `json:"skipped_files"`
 }
 
+// SupportRepositoryURL and SupportIssuesURL are public, stable destinations
+// for Agents that need to report a reproducible ai-prov problem.
+const (
+	SupportRepositoryURL = "https://github.com/Crish07/ai-code-provenance"
+	SupportIssuesURL     = SupportRepositoryURL + "/issues/new?template=bug_report.md"
+)
+
+type supportOutput struct {
+	RepositoryURL string `json:"repository_url"`
+	IssuesURL     string `json:"issues_url"`
+}
+
 type fileChangeOutput struct {
 	Path                string `json:"path"`
 	Status              string `json:"status"`
@@ -102,6 +119,18 @@ type verifyOutput struct {
 // unmarshaling and validation so it can return the structured ErrorPayload on
 // every failure mode.
 func registerTools(s *mcp.Server, resolve projectResolver) {
+	s.AddTool(&mcp.Tool{
+		Name:        "provenance.support",
+		Description: "Return the public source repository and GitHub issue URL for reporting a reproducible ai-prov problem. This tool does not read the workspace.",
+		InputSchema: supportInputSchema,
+	}, func(_ context.Context, req *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		arguments := bytes.TrimSpace(req.Params.Arguments)
+		if len(arguments) != 0 && !bytes.Equal(arguments, []byte("{}")) && !bytes.Equal(arguments, []byte("null")) {
+			return errorResult(invalidArgument("provenance.support does not accept arguments")), nil
+		}
+		return successResult(supportOutput{RepositoryURL: SupportRepositoryURL, IssuesURL: SupportIssuesURL}), nil
+	})
+
 	s.AddTool(&mcp.Tool{
 		Name:        "provenance.session_start",
 		Description: "Start a provenance session and persist a baseline snapshot before any tracked source file is modified.",
