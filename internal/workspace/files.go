@@ -1,0 +1,167 @@
+// Copyright (c) 2026 The ai-code-provenance Crish07.
+//
+// Licensed under the MIT License.
+// See LICENSE file in the project root for full license text.
+
+package workspace
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"sort"
+	"strings"
+	"sync"
+	"unicode/utf8"
+)
+
+type File struct {
+	Path string
+	Data []byte
+}
+type Skipped struct{ Path, Reason string }
+
+// Scan returns stable, project-relative UTF-8 text files.
+func Scan(root string, maxBytes int64) ([]File, []Skipped, error) {
+	var files []File
+	var skipped []Skipped
+	type candidate struct{ path, rel string }
+	var candidates []candidate
+	ignored := loadIgnores(root)
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == root {
+			return nil
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == ".gitignore" || rel == ".ai-provenanceignore" {
+			return nil
+		}
+		if entry.IsDir() {
+			if hiddenDir(rel) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			skipped = append(skipped, Skipped{rel, "symlink"})
+			return nil
+		}
+		if !entry.Type().IsRegular() {
+			return nil
+		}
+		if ignored(rel) {
+			skipped = append(skipped, Skipped{rel, "ignored"})
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.Size() > maxBytes {
+			skipped = append(skipped, Skipped{rel, "too_large"})
+			return nil
+		}
+		candidates = append(candidates, candidate{path, rel})
+		return nil
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("scan workspace: %w", err)
+	}
+	workers := runtime.GOMAXPROCS(0)
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > 8 {
+		workers = 8
+	}
+	jobs := make(chan candidate)
+	type result struct {
+		file    File
+		skipped *Skipped
+		err     error
+	}
+	results := make(chan result, len(candidates))
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for c := range jobs {
+				data, e := os.ReadFile(c.path)
+				if e != nil {
+					results <- result{err: e}
+					continue
+				}
+				if bytes.IndexByte(data, 0) >= 0 || !utf8.Valid(data) {
+					s := Skipped{c.rel, "non_utf8_or_binary"}
+					results <- result{skipped: &s}
+					continue
+				}
+				results <- result{file: File{c.rel, data}}
+			}
+		}()
+	}
+	go func() {
+		for _, c := range candidates {
+			jobs <- c
+		}
+		close(jobs)
+		wg.Wait()
+		close(results)
+	}()
+	for r := range results {
+		if r.err != nil {
+			return nil, nil, fmt.Errorf("scan workspace: %w", r.err)
+		}
+		if r.skipped != nil {
+			skipped = append(skipped, *r.skipped)
+		} else {
+			files = append(files, r.file)
+		}
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
+	sort.Slice(skipped, func(i, j int) bool { return skipped[i].Path < skipped[j].Path })
+	return files, skipped, nil
+}
+
+func loadIgnores(root string) func(string) bool {
+	var p []string
+	for _, n := range []string{".gitignore", ".ai-provenanceignore"} {
+		if b, e := os.ReadFile(filepath.Join(root, n)); e == nil {
+			for _, s := range strings.Fields(string(b)) {
+				if !strings.HasPrefix(s, "#") {
+					p = append(p, s)
+				}
+			}
+		}
+	}
+	return func(path string) bool {
+		for _, s := range p {
+			if ok, _ := filepath.Match(s, path); ok {
+				return true
+			}
+			if ok, _ := filepath.Match(s, filepath.Base(path)); ok {
+				return true
+			}
+		}
+		return false
+	}
+}
+
+func hiddenDir(path string) bool {
+	first := strings.Split(path, "/")[0]
+	switch first {
+	case ".git", ".ai-provenance", ".agents", ".claude", ".codex", ".cursor", ".trae", "node_modules", "vendor", "dist", "build":
+		return true
+	}
+	return false
+}
