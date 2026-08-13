@@ -1,0 +1,44 @@
+name: License Check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  license:
+    name: license
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify MIT license and Go headers
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          test -f LICENSE
+          test "$(sha256sum LICENSE | awk '{print $1}')" = '6a99cd37fb612ab510ec0f1a0bb0b466337b2376a9e63ee93bfee87434f76235'
+          grep -Fx 'MIT License' LICENSE
+          grep -Fx 'Copyright (c) 2026 Crish07' LICENSE
+          grep -Fqx 'Permission is hereby granted, free of charge, to any person obtaining a copy' LICENSE
+
+          header=$(printf '%s\n' \
+            '// Copyright (c) 2026 The ai-code-provenance Crish07.' \
+            '//' \
+            '// Licensed under the MIT License.' \
+            '// See LICENSE file in the project root for full license text.')
+
+          git diff --name-only --diff-filter=A "$BASE_SHA" "$HEAD_SHA" -- '*.go' |
+            while IFS= read -r file; do
+              test -n "$file" || continue
+              actual=$(sed -n '1,4p' "$file")
+              if [ "$actual" != "$header" ]; then
+                echo "Missing or inconsistent MIT header: $file" >&2
+                exit 1
+              fi
+            done
