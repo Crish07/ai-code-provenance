@@ -1,0 +1,41 @@
+---
+description: Require AI coding changes to be recorded through ai-prov MCP.
+globs:
+  - "**/*"
+alwaysApply: true
+---
+
+# AI Code Provenance Protocol
+
+All tracked source-code changes MUST use ai-prov MCP. Before editing, call
+provenance.session_start. Before reporting completion, call
+provenance.session_finish and require finished. If either call fails, stop,
+report the error code, and do not claim success.
+
+Workflow: confirm ai-prov init; start a session with task, agent cursor, and
+model; persist the returned session ID in durable task state that survives context compaction; edit; finish using the returned session ID; optionally call
+provenance.verify for staged strict verification before commit.
+
+Only provenance.session_start, provenance.session_finish,
+provenance.session_status, provenance.verify, provenance.support, provenance.session_recover, provenance.session_heartbeat, and provenance.session_abandon are valid tool names. Generate and persist an agent_instance_id UUID with the session ID; heartbeat long tasks and finish with both IDs. Call
+provenance.support to obtain the repository and GitHub Issue URL for a
+reproducible tool problem; call provenance.session_status to confirm whether a
+finish timeout left the session failed before starting a new one. After context compaction or a lost ID, call provenance.session_recover with agent_instance_id before start; do not guess after SESSION_RECOVERY_REQUIRED. Do not edit
+before start, skip finish, submit client-generated diffs as facts, or manually
+commit between start and finish. Unrecorded lines are never AI code.
+
+For PROJECT_NOT_INITIALIZED run init. For SESSION_BASELINE_CONFLICT,
+FINISH_TIMEOUT, FINISH_CANCELLED, or DIFF_RESOURCE_LIMIT start a new session;
+call provenance.session_status first to confirm the failed state. Retry
+STORAGE_LOCKED later. Never retry finish on a failed session, never run finish
+concurrently on the same session.
+For SNAPSHOT_QUOTA_EXCEEDED, no session was created: do not edit tracked files;
+report `limit_bytes`, `existing_bytes`, and `required_bytes`, then ask the user
+to run snapshot GC or increase `snapshot_max_bytes`.
+
+On start or finish failure, report verbatim the error code, `details.stage`,
+`details.path`/`bytes`/`lines` (for DIFF_RESOURCE_LIMIT),
+`details.scanned_files`/`total_files`/`candidate_files` (for FINISH_TIMEOUT and
+FINISH_CANCELLED), the ai-prov version or commit, and any Host timeout you
+observed. Do not attach source content, snapshots, the SQLite database, Diff
+output, token, or Git config; ai-prov never asks for them.
