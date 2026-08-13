@@ -2,6 +2,8 @@
 
 面向 MCP Coding Agent 的本地 AI 代码来源追踪工具。ai-prov 在本地记录 AI session、计算真实工作区变更，并为 Git 新增行计算**AI 来源覆盖率**；不会上传源码、Diff 或项目文件。
 
+[代码仓库](https://github.com/Crish07/ai-code-provenance)
+
 [English README](README.md)
 
 ## 安装与初始化
