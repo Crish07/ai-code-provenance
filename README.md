@@ -2,6 +2,8 @@
 
 Local AI code provenance for MCP-enabled coding agents. ai-prov records declared local AI sessions, computes workspace changes, and reports **AI source coverage** for added Git lines. It never uploads source code, diffs, or project files.
 
+[Repository](https://github.com/Crish07/ai-code-provenance)
+
 [中文说明](README.zh.md)
 
 ## Install and initialize
