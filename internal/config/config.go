@@ -24,10 +24,11 @@ const (
 	// DefaultSnapshotMaxBytes caps the content-addressed object store at one
 	// gibibyte. It is intentionally finite so default installations remain
 	// lightweight; users may raise it for larger repositories.
-	DefaultSnapshotMaxBytes          int64 = 1024 * 1024 * 1024
-	DefaultLeaseTimeoutMinutes             = 30
-	DefaultMaxActivePerAgentInstance       = 1
-	DefaultExpiredSessionGraceHours        = 24
+	DefaultSnapshotMaxBytes            int64 = 1024 * 1024 * 1024
+	DefaultLeaseTimeoutMinutes               = 24 * 60
+	DefaultMaxActivePerAgentInstance         = 1
+	DefaultExpiredSessionGraceHours          = 7 * 24
+	DefaultSnapshotAutoGCIntervalHours       = 24
 
 	provenanceDir = ".ai-provenance"
 	configFile    = "config.yaml"
@@ -42,16 +43,17 @@ var (
 
 // Config is the project-local ai-prov configuration.
 type Config struct {
-	SchemaVersion              int         `yaml:"schema_version"`
-	MaxFileBytes               int64       `yaml:"max_file_bytes"`
-	StrictVerify               bool        `yaml:"strict_verify"`
-	SnapshotRetentionHours     int         `yaml:"snapshot_retention_hours"`
-	SnapshotMaxBytes           int64       `yaml:"snapshot_max_bytes"`
-	LeaseTimeoutMinutes        int         `yaml:"lease_timeout_minutes"`
-	MaxActivePerAgentInstance  int         `yaml:"max_active_per_agent_instance"`
-	ExpiredSessionGraceHours   int         `yaml:"expired_session_grace_hours"`
-	AutoReclaimExpiredSessions bool        `yaml:"auto_reclaim_expired_sessions"`
-	Hook                       *HookConfig `yaml:"hook,omitempty"`
+	SchemaVersion               int         `yaml:"schema_version"`
+	MaxFileBytes                int64       `yaml:"max_file_bytes"`
+	StrictVerify                bool        `yaml:"strict_verify"`
+	SnapshotRetentionHours      int         `yaml:"snapshot_retention_hours"`
+	SnapshotMaxBytes            int64       `yaml:"snapshot_max_bytes"`
+	LeaseTimeoutMinutes         int         `yaml:"lease_timeout_minutes"`
+	MaxActivePerAgentInstance   int         `yaml:"max_active_per_agent_instance"`
+	ExpiredSessionGraceHours    int         `yaml:"expired_session_grace_hours"`
+	AutoReclaimExpiredSessions  bool        `yaml:"auto_reclaim_expired_sessions"`
+	SnapshotAutoGCIntervalHours int         `yaml:"snapshot_auto_gc_interval_hours"`
+	Hook                        *HookConfig `yaml:"hook,omitempty"`
 }
 
 // HookConfig controls the optional commit-msg hook behavior. A nil pointer in
@@ -101,14 +103,16 @@ func ValidateTrailerFields(fields []string) error {
 // Default returns a configuration suitable for a newly initialized project.
 func Default() Config {
 	return Config{
-		SchemaVersion:             CurrentSchemaVersion,
-		MaxFileBytes:              DefaultMaxFileBytes,
-		StrictVerify:              false,
-		SnapshotRetentionHours:    DefaultSnapshotRetentionHours,
-		SnapshotMaxBytes:          DefaultSnapshotMaxBytes,
-		LeaseTimeoutMinutes:       DefaultLeaseTimeoutMinutes,
-		MaxActivePerAgentInstance: DefaultMaxActivePerAgentInstance,
-		ExpiredSessionGraceHours:  DefaultExpiredSessionGraceHours,
+		SchemaVersion:               CurrentSchemaVersion,
+		MaxFileBytes:                DefaultMaxFileBytes,
+		StrictVerify:                false,
+		SnapshotRetentionHours:      DefaultSnapshotRetentionHours,
+		SnapshotMaxBytes:            DefaultSnapshotMaxBytes,
+		LeaseTimeoutMinutes:         DefaultLeaseTimeoutMinutes,
+		MaxActivePerAgentInstance:   DefaultMaxActivePerAgentInstance,
+		ExpiredSessionGraceHours:    DefaultExpiredSessionGraceHours,
+		AutoReclaimExpiredSessions:  true,
+		SnapshotAutoGCIntervalHours: DefaultSnapshotAutoGCIntervalHours,
 	}
 }
 
@@ -177,7 +181,7 @@ func Load(root string) (Config, error) {
 		return Config{}, fmt.Errorf("read config: %w", err)
 	}
 
-	var cfg Config
+	cfg := Default()
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&cfg); err != nil {
@@ -197,6 +201,9 @@ func Load(root string) (Config, error) {
 	}
 	if cfg.ExpiredSessionGraceHours == 0 {
 		cfg.ExpiredSessionGraceHours = DefaultExpiredSessionGraceHours
+	}
+	if cfg.SnapshotAutoGCIntervalHours == 0 {
+		cfg.SnapshotAutoGCIntervalHours = DefaultSnapshotAutoGCIntervalHours
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -220,6 +227,9 @@ func Save(root string, cfg Config) error {
 	}
 	if cfg.ExpiredSessionGraceHours == 0 {
 		cfg.ExpiredSessionGraceHours = DefaultExpiredSessionGraceHours
+	}
+	if cfg.SnapshotAutoGCIntervalHours == 0 {
+		cfg.SnapshotAutoGCIntervalHours = DefaultSnapshotAutoGCIntervalHours
 	}
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -281,6 +291,9 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.ExpiredSessionGraceHours <= 0 {
 		return fmt.Errorf("expired_session_grace_hours must be positive")
+	}
+	if cfg.SnapshotAutoGCIntervalHours <= 0 {
+		return fmt.Errorf("snapshot_auto_gc_interval_hours must be positive")
 	}
 	return nil
 }

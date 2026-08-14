@@ -12,20 +12,20 @@ import (
 	"testing"
 )
 
-func TestCreate(t *testing.T) {
+func TestCreateWithQuota(t *testing.T) {
 	r := t.TempDir()
 	if err := os.WriteFile(filepath.Join(r, "a.go"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	m, e := Create(r, "s1", 100)
+	m, e := CreateWithQuota(r, "s1", 100, 0)
 	if e != nil || len(m.Files) != 1 {
 		t.Fatalf("%#v %v", m, e)
 	}
 	if _, e = os.Stat(filepath.Join(r, ".ai-provenance", "snapshots", "s1", "manifest.json")); e != nil {
 		t.Fatal(e)
 	}
-	if !Verify(r, m) {
-		t.Fatal("valid snapshot rejected")
+	if _, err := ReadFile(r, m, m.Files[0]); err != nil {
+		t.Fatalf("valid snapshot rejected: %v", err)
 	}
 	if m.Version != 2 {
 		t.Fatalf("version=%d", m.Version)
@@ -33,7 +33,7 @@ func TestCreate(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(r, ".ai-provenance", "objects", m.Files[0].Hash), []byte("changed"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if Verify(r, m) {
+	if _, err := ReadFile(r, m, m.Files[0]); err == nil {
 		t.Fatal("damaged snapshot accepted")
 	}
 }
@@ -79,11 +79,11 @@ func TestCreate_DeduplicatesObjectsAndReadsLegacySnapshot(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(r, "a.go"), []byte("same\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	first, err := Create(r, "one", 100)
+	first, err := CreateWithQuota(r, "one", 100, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := Create(r, "two", 100)
+	second, err := CreateWithQuota(r, "two", 100, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,17 +113,17 @@ func TestGCDryRun_ProtectsSharedObjects(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(r, "a.go"), []byte("shared\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	first, err := Create(r, "one", 100)
+	first, err := CreateWithQuota(r, "one", 100, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Create(r, "two", 100); err != nil {
+	if _, err := CreateWithQuota(r, "two", 100, 0); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(r, "a.go"), []byte("unique\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	third, err := Create(r, "three", 100)
+	third, err := CreateWithQuota(r, "three", 100, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,14 +144,14 @@ func TestGCApply_RemovesOnlyCandidateSnapshotAndObject(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(r, "a.go"), []byte("old\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	old, err := Create(r, "old", 100)
+	old, err := CreateWithQuota(r, "old", 100, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(r, "a.go"), []byte("keep\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	keep, err := Create(r, "keep", 100)
+	keep, err := CreateWithQuota(r, "keep", 100, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,14 +174,14 @@ func TestCreate_NormalizesLineEndings(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(r, "a.go"), []byte("a\r\nb\r\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	first, err := Create(r, "one", 100)
+	first, err := CreateWithQuota(r, "one", 100, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(r, "a.go"), []byte("a\nb\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	second, err := Create(r, "two", 100)
+	second, err := CreateWithQuota(r, "two", 100, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

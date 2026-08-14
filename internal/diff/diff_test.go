@@ -8,7 +8,10 @@ package diff
 import "testing"
 
 func TestDiff(t *testing.T) {
-	e := Diff("a\nb\n", "a\nc\n")
+	e, err := DiffWithLimit("a\nb\n", "a\nc\n", 16)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(e) != 3 || e[0].Op != Equal || e[1].Op != Delete || e[2].Op != Insert {
 		t.Fatalf("%#v", e)
 	}
@@ -29,7 +32,10 @@ func TestDiff_GoldenEdgeCases(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Diff(tt.before, tt.after)
+			got, err := DiffWithLimit(tt.before, tt.after, 16)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if len(got) != len(tt.want) {
 				t.Fatalf("Diff() = %#v, want %#v", got, tt.want)
 			}
@@ -50,28 +56,27 @@ func TestClassify(t *testing.T) {
 }
 
 func TestDiff_EmptyDuplicateAndTrailingNewline(t *testing.T) {
-	if len(Diff("", "")) != 0 {
+	if got, err := DiffWithLimit("", "", 16); err != nil || len(got) != 0 {
 		t.Fatal("empty")
 	}
-	e := Diff("x\nx\n", "x\n")
+	e, err := DiffWithLimit("x\nx\n", "x\n", 16)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(e) != 2 || e[0].Op != Equal || e[1].Op != Delete {
 		t.Fatalf("duplicate %#v", e)
 	}
-	if len(Diff("a\n", "a")) != 1 {
+	if got, err := DiffWithLimit("a\n", "a", 16); err != nil || len(got) != 1 {
 		t.Fatal("trailing newline")
 	}
 }
 
-func TestHashAndRenames(t *testing.T) {
-	e := Diff("a\n", "b\n")
+func TestHash(t *testing.T) {
+	e, err := DiffWithLimit("a\n", "b\n", 16)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if Hash(e) != Hash(e) {
 		t.Fatal("unstable hash")
-	}
-	r := Renames(map[string]string{"old": "h"}, map[string]string{"new": "h", "x": "z"})
-	if r["old"] != "new" {
-		t.Fatal(r)
-	}
-	if len(Renames(map[string]string{"old": "h"}, map[string]string{"a": "h", "b": "h"})) != 0 {
-		t.Fatal("ambiguous rename")
 	}
 }

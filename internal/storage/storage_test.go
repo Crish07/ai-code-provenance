@@ -140,7 +140,62 @@ func TestStore_HeartbeatAndExpireLeasesRespectInstanceAndCutoff(t *testing.T) {
 	}
 }
 
-func TestSaveLineProvenance_EnforcesOneCurrentV2Identity(t *testing.T) {
+func TestStore_MaintenanceLeaseThrottlesAndRecoversExpiredOwner(t *testing.T) {
+	store, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+
+	acquired, err := store.TryAcquireMaintenance(ctx, SnapshotGCMaintenance, "one", "2026-08-14T00:00:00Z", "2026-08-14T00:10:00Z", "2026-08-13T00:00:00Z")
+	if err != nil || !acquired {
+		t.Fatalf("first acquire = %v, %v", acquired, err)
+	}
+	acquired, err = store.TryAcquireMaintenance(ctx, SnapshotGCMaintenance, "two", "2026-08-14T00:01:00Z", "2026-08-14T00:11:00Z", "2026-08-13T00:01:00Z")
+	if err != nil || acquired {
+		t.Fatalf("concurrent acquire = %v, %v, want false,nil", acquired, err)
+	}
+	acquired, err = store.TryAcquireMaintenance(ctx, SnapshotGCMaintenance, "two", "2026-08-14T00:11:00Z", "2026-08-14T00:21:00Z", "2026-08-13T00:11:00Z")
+	if err != nil || !acquired {
+		t.Fatalf("expired lease takeover = %v, %v", acquired, err)
+	}
+	if err := store.CompleteMaintenance(ctx, SnapshotGCMaintenance, "two", "2026-08-14T00:12:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	acquired, err = store.TryAcquireMaintenance(ctx, SnapshotGCMaintenance, "three", "2026-08-14T12:00:00Z", "2026-08-14T12:10:00Z", "2026-08-13T12:00:00Z")
+	if err != nil || acquired {
+		t.Fatalf("interval throttle acquire = %v, %v, want false,nil", acquired, err)
+	}
+	acquired, err = store.TryAcquireMaintenance(ctx, SnapshotGCMaintenance, "three", "2026-08-15T00:13:00Z", "2026-08-15T00:23:00Z", "2026-08-14T00:13:00Z")
+	if err != nil || !acquired {
+		t.Fatalf("next interval acquire = %v, %v", acquired, err)
+	}
+}
+
+func TestStore_MaintenanceFailureKeepsIntervalThrottle(t *testing.T) {
+	store, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	ctx := context.Background()
+	if acquired, err := store.TryAcquireMaintenance(ctx, SnapshotGCMaintenance, "one", "2026-08-14T00:00:00Z", "2026-08-14T00:10:00Z", "2026-08-13T00:00:00Z"); err != nil || !acquired {
+		t.Fatalf("first acquire = %v, %v", acquired, err)
+	}
+	if err := store.FailMaintenance(ctx, SnapshotGCMaintenance, "one", "snapshot gc failed"); err != nil {
+		t.Fatal(err)
+	}
+	if acquired, err := store.TryAcquireMaintenance(ctx, SnapshotGCMaintenance, "two", "2026-08-14T01:00:00Z", "2026-08-14T01:10:00Z", "2026-08-13T01:00:00Z"); err != nil || acquired {
+		t.Fatalf("retry after failure = %v, %v, want false,nil", acquired, err)
+	}
+	var message string
+	if err := store.db.QueryRow("SELECT last_error FROM maintenance_state WHERE name=?", SnapshotGCMaintenance).Scan(&message); err != nil || message != "snapshot gc failed" {
+		t.Fatalf("last_error = %q, %v", message, err)
+	}
+}
+
+func TestLineProvenanceSchema_EnforcesOneCurrentV2Identity(t *testing.T) {
 	store, err := Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -148,18 +203,18 @@ func TestSaveLineProvenance_EnforcesOneCurrentV2Identity(t *testing.T) {
 	defer store.Close()
 	ctx := context.Background()
 	first := LineProvenance{ID: "first", FilePath: "a.go", LineIdentity: "identity", ContentHash: "hash", Source: "AI", CreatedAt: Now()}
-	if err := store.SaveLineProvenance(ctx, first); err != nil {
+	if err := insertLine(ctx, store, first); err != nil {
 		t.Fatal(err)
 	}
 	second := first
 	second.ID = "second"
-	if err := store.SaveLineProvenance(ctx, second); err == nil {
+	if err := insertLine(ctx, store, second); err == nil {
 		t.Fatal("duplicate current v2 identity accepted")
 	}
 	if _, err := store.db.Exec("UPDATE line_provenance SET removed_at=? WHERE id='first'", Now()); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SaveLineProvenance(ctx, second); err != nil {
+	if err := insertLine(ctx, store, second); err != nil {
 		t.Fatalf("removed identity should allow replacement: %v", err)
 	}
 }
@@ -199,21 +254,48 @@ func TestRepository_PersistsRelatedRecords(t *testing.T) {
 	if err := store.CreateSession(ctx, session); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SaveSnapshot(ctx, FileSnapshot{SnapshotID: "snap", FilePath: "a.go", ContentHash: "h", StoragePath: "snap/a"}); err != nil {
+	if _, err := store.db.ExecContext(ctx, "INSERT INTO ai_change_event(id,session_id,file_path,status,added_lines,deleted_lines,diff_hash,created_at) VALUES (?,?,?,?,?,?,?,?)", "e1", "s1", "a.go", "modified", 0, 0, "d", Now()); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SaveChangeEvent(ctx, ChangeEvent{ID: "e1", SessionID: "s1", FilePath: "a.go", Status: "modified", DiffHash: "d", CreatedAt: Now()}); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.SaveLineProvenance(ctx, LineProvenance{ID: "l1", FilePath: "a.go", LineIdentity: "i", ContentHash: "h", Source: "AI", CreatedAt: Now()}); err != nil {
+	if err := insertLine(ctx, store, LineProvenance{ID: "l1", FilePath: "a.go", LineIdentity: "i", ContentHash: "h", Source: "AI", CreatedAt: Now()}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := store.GetSession(ctx, "s1")
 	if err != nil || got.Task != "task" || got.AgentInstanceID != "instance" {
 		t.Fatalf("GetSession() = %#v, %v", got, err)
 	}
-	if err := store.SaveChangeEvent(ctx, ChangeEvent{ID: "bad", SessionID: "missing", FilePath: "a", Status: "added", DiffHash: "d", CreatedAt: Now()}); err == nil {
+	if _, err := store.db.ExecContext(ctx, "INSERT INTO ai_change_event(id,session_id,file_path,status,added_lines,deleted_lines,diff_hash,created_at) VALUES (?,?,?,?,?,?,?,?)", "bad", "missing", "a", "added", 0, 0, "d", Now()); err == nil {
 		t.Fatal("missing foreign key accepted")
+	}
+}
+
+func TestOpen_UpgradesV3AndDropsLegacyFileSnapshot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "provenance.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		"CREATE TABLE schema_migration (version INTEGER PRIMARY KEY)",
+		"INSERT INTO schema_migration(version) VALUES (3)",
+		"CREATE TABLE file_snapshot (snapshot_id TEXT NOT NULL, file_path TEXT NOT NULL, content_hash TEXT NOT NULL, storage_path TEXT NOT NULL, PRIMARY KEY (snapshot_id, file_path))",
+		"INSERT INTO file_snapshot(snapshot_id,file_path,content_hash,storage_path) VALUES ('legacy','a.go','hash','path')",
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	var count int
+	if err := store.db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='file_snapshot'").Scan(&count); err != nil || count != 0 {
+		t.Fatalf("legacy file_snapshot count=%d err=%v", count, err)
 	}
 }
 
@@ -239,7 +321,7 @@ func TestCommitFinish_RollsBackProvenanceRemoval(t *testing.T) {
 	}
 	defer s.Close()
 	ctx := context.Background()
-	if err := s.SaveLineProvenance(ctx, LineProvenance{ID: "old", FilePath: "a.go", LineIdentity: "old", ContentHash: "hash", Source: "AI", CreatedAt: Now()}); err != nil {
+	if err := insertLine(ctx, s, LineProvenance{ID: "old", FilePath: "a.go", LineIdentity: "old", ContentHash: "hash", Source: "AI", CreatedAt: Now()}); err != nil {
 		t.Fatal(err)
 	}
 	if err := s.CommitFinish(ctx, "missing", []ChangeEvent{{ID: "event", SessionID: "missing", FilePath: "a.go", Status: "modified", DiffHash: "hash", CreatedAt: Now()}}, nil, []string{"old"}); err == nil {
@@ -264,16 +346,16 @@ func TestCurrentAIByFile_ReturnsUnremovedAIRows(t *testing.T) {
 	if err := s.CreateSession(ctx, Session{ID: "s1", ProjectPath: "/p", Task: "t", State: "active", SnapshotID: "snap", StartedAt: Now()}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SaveLineProvenance(ctx, LineProvenance{ID: "l1", FilePath: "a.go", LineIdentity: "62", ContentHash: "62", Source: "AI", OriginSessionID: sql.NullString{String: "s1", Valid: true}, CreatedAt: Now()}); err != nil {
+	if err := insertLine(ctx, s, LineProvenance{ID: "l1", FilePath: "a.go", LineIdentity: "62", ContentHash: "62", Source: "AI", OriginSessionID: sql.NullString{String: "s1", Valid: true}, CreatedAt: Now()}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SaveLineProvenance(ctx, LineProvenance{ID: "l2", FilePath: "a.go", LineIdentity: "63", ContentHash: "63", Source: "Human", CreatedAt: Now()}); err != nil {
+	if err := insertLine(ctx, s, LineProvenance{ID: "l2", FilePath: "a.go", LineIdentity: "63", ContentHash: "63", Source: "Human", CreatedAt: Now()}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.db.Exec("UPDATE line_provenance SET removed_at=? WHERE id='l1'", Now()); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SaveLineProvenance(ctx, LineProvenance{ID: "l3", FilePath: "a.go", LineIdentity: "64", ContentHash: "64", Source: "AI", OriginSessionID: sql.NullString{String: "s1", Valid: true}, CreatedAt: Now()}); err != nil {
+	if err := insertLine(ctx, s, LineProvenance{ID: "l3", FilePath: "a.go", LineIdentity: "64", ContentHash: "64", Source: "AI", OriginSessionID: sql.NullString{String: "s1", Valid: true}, CreatedAt: Now()}); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.CurrentAIByFile(ctx, "a.go")
@@ -308,4 +390,12 @@ func TestActiveSessions_FiltersProjectAndSorts(t *testing.T) {
 	if len(got) != 2 || got[0].ID != "first" || got[1].ID != "later" {
 		t.Fatalf("sessions=%#v", got)
 	}
+}
+
+func insertLine(ctx context.Context, store *Store, v LineProvenance) error {
+	if v.IdentityVersion == 0 {
+		v.IdentityVersion = IdentityVersionV2
+	}
+	_, err := store.db.ExecContext(ctx, "INSERT INTO line_provenance(id,file_path,line_identity,content_hash,source,origin_session_id,created_at,identity_version) VALUES (?,?,?,?,?,?,?,?)", v.ID, v.FilePath, v.LineIdentity, v.ContentHash, v.Source, v.OriginSessionID, v.CreatedAt, v.IdentityVersion)
+	return err
 }

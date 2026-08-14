@@ -44,7 +44,7 @@ See [Rules configuration](rules/README.md) or [中文配置](rules/README.zh.md)
 
 1. Generate and persist one `agent_instance_id` UUID for the Agent instance.
 2. Call `provenance.session_start` before edits; persist its `session_id` and returned `agent_instance_id` across context compaction.
-3. For long tasks, call `provenance.session_heartbeat` with both IDs.
+3. Before creating a session, call `provenance.session_recover`; when it returns one active session, reuse both IDs rather than creating a new baseline.
 4. Call `provenance.session_finish` with both IDs and require `finished`.
 5. Optionally run `ai-prov verify --scope staged --strict` before committing.
 
@@ -76,7 +76,7 @@ Except for `install`, `uninstall`, `version`, and `completion`, project commands
 | `ai-prov snapshots gc --json`            | Serializes the GC preview or apply result as JSON.                                                                                                                                                                    |
 | `ai-prov snapshots gc --apply`           | Deletes terminal snapshot/object candidates selected by the current criteria. This is destructive: first run the command without `--apply` and review the scope. It can be combined with `--older-than` and `--json`. |
 
-Lease-expired snapshots enter automatic reclamation only after the project explicitly enables `auto_reclaim_expired_sessions: true` and the grace period has elapsed. Normal CLI GC always defaults to dry-run.
+Automatic reclaim policy: the first `session_start` for each project each day checks reclaimable snapshots. Snapshots for completed sessions are retained for seven days by default; snapshots for sessions that failed because their lease expired also become reclaimable after seven days. Snapshots of active sessions are never automatically deleted. The default session lease is 24 hours for overnight recovery, and normal tasks do not need heartbeats. Normal CLI GC always defaults to dry-run and can be used to preview or reclaim earlier manually.
 
 ### Coverage verification and serialized report output
 

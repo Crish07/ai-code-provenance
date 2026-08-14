@@ -45,10 +45,6 @@ func (e *QuotaExceededError) Error() string {
 	return fmt.Sprintf("snapshot quota exceeded: %d existing bytes + %d required bytes exceeds %d bytes", e.Existing, e.Required, e.Limit)
 }
 
-func Create(root, id string, max int64) (Manifest, error) {
-	return CreateWithQuota(root, id, max, 0)
-}
-
 // CreateWithQuota writes a v2 manifest only after it has scanned and
 // normalized every tracked file and proved that the object store will fit
 // within maxSnapshotBytes. A zero limit disables the quota for direct callers
@@ -169,19 +165,6 @@ func Normalize(data []byte) []byte {
 		return data
 	}
 	return []byte(strings.ReplaceAll(string(data), "\r\n", "\n"))
-}
-
-func Verify(root string, m Manifest) bool {
-	for _, f := range m.Files {
-		b, e := ReadFile(root, m, f)
-		if e != nil {
-			return false
-		}
-		if !Matches(b, f.Hash) {
-			return false
-		}
-	}
-	return true
 }
 
 // ReadFile reads one baseline file from the content-addressed v2 object store

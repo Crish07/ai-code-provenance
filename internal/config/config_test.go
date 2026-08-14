@@ -59,14 +59,15 @@ func TestFindProjectRoot(t *testing.T) {
 func TestConfig_SaveLoadRoundTrip(t *testing.T) {
 	root := t.TempDir()
 	want := Config{
-		SchemaVersion:             CurrentSchemaVersion,
-		MaxFileBytes:              1024,
-		StrictVerify:              true,
-		SnapshotRetentionHours:    DefaultSnapshotRetentionHours,
-		SnapshotMaxBytes:          DefaultSnapshotMaxBytes,
-		LeaseTimeoutMinutes:       DefaultLeaseTimeoutMinutes,
-		MaxActivePerAgentInstance: DefaultMaxActivePerAgentInstance,
-		ExpiredSessionGraceHours:  DefaultExpiredSessionGraceHours,
+		SchemaVersion:               CurrentSchemaVersion,
+		MaxFileBytes:                1024,
+		StrictVerify:                true,
+		SnapshotRetentionHours:      DefaultSnapshotRetentionHours,
+		SnapshotMaxBytes:            DefaultSnapshotMaxBytes,
+		LeaseTimeoutMinutes:         DefaultLeaseTimeoutMinutes,
+		MaxActivePerAgentInstance:   DefaultMaxActivePerAgentInstance,
+		ExpiredSessionGraceHours:    DefaultExpiredSessionGraceHours,
+		SnapshotAutoGCIntervalHours: DefaultSnapshotAutoGCIntervalHours,
 	}
 
 	if err := Save(root, want); err != nil {
@@ -125,8 +126,42 @@ func TestLoad_LegacySnapshotSettingsUseDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.SnapshotRetentionHours != DefaultSnapshotRetentionHours || cfg.SnapshotMaxBytes != DefaultSnapshotMaxBytes {
+	if cfg.SnapshotRetentionHours != DefaultSnapshotRetentionHours || cfg.SnapshotMaxBytes != DefaultSnapshotMaxBytes || cfg.SnapshotAutoGCIntervalHours != DefaultSnapshotAutoGCIntervalHours || !cfg.AutoReclaimExpiredSessions {
 		t.Fatalf("legacy settings = %+v", cfg)
+	}
+}
+
+func TestConfig_RejectsInvalidSnapshotAutoGCInterval(t *testing.T) {
+	cfg := Default()
+	cfg.SnapshotAutoGCIntervalHours = -1
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want snapshot_auto_gc_interval_hours validation error")
+	}
+}
+
+func TestDefault_UsesOvernightRecoveryLeaseAndGrace(t *testing.T) {
+	cfg := Default()
+	if cfg.LeaseTimeoutMinutes != 24*60 || cfg.ExpiredSessionGraceHours != 7*24 {
+		t.Fatalf("default recovery settings = %+v", cfg)
+	}
+}
+
+func TestConfig_ExplicitAutoReclaimFalseOverridesDefault(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, provenanceDir)
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	content := "schema_version: 1\nmax_file_bytes: 1024\nstrict_verify: false\nauto_reclaim_expired_sessions: false\n"
+	if err := os.WriteFile(filepath.Join(dir, configFile), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AutoReclaimExpiredSessions {
+		t.Fatalf("explicit false was replaced: %+v", cfg)
 	}
 }
 
