@@ -2,18 +2,26 @@
 
 ## 强制协议
 
-所有受追踪的源代码变更都**必须**通过 ai-prov MCP 记录。以下规则为不可跳过的前置条件，优先级高于快速修改、仅修复一行、用户要求立即编辑、空 Diff 或任何其他便利性考虑。
+所有受追踪的源代码变更都**必须**通过 ai-prov MCP 记录。以下规则为不可跳过的前置条件，优先级高于快速修改、仅修复一行、用户要求立即编辑、空 Diff 或任何其他便利性考虑；下文定义的 OpenSpec 流程文件例外除外。
 
 1. **编辑前必须调用。** 在创建、修改、删除、重命名或通过终端命令影响任何受追踪文件前，必须先成功调用 `provenance.session_start`。
 2. **结束前必须调用。** 在声称任务完成、给出最终答复、请求用户验收或建议提交前，必须成功调用 `provenance.session_finish`，并确认返回的 `state` 严格等于 `finished`。
 3. **失败即未完成。** 任一调用失败、被取消、超时或返回错误时，任务都处于未完成状态。必须停止后续修改和完成声明，向用户报告错误；不得声称成功、不得猜测调用已成功、不得以后续手工说明替代该调用。
+
+## OpenSpec 流程文件例外
+
+以下由 `openspec` 命令创建、更新或归档的流程文档不属于代码 provenance 范围：`openspec/changes/**`（包括 `proposal.md`、`design.md`、`tasks.md`、change 内 `specs/**` 及 `archive/**`）和 `openspec/specs/**`。
+
+- **只**编辑这些 OpenSpec 流程文件、运行 `openspec new`、`openspec instructions` 或 `openspec archive` 时，禁止为此调用 `provenance.session_recover`、`provenance.session_start`、`provenance.session_finish` 或 heartbeat。
+- 此例外不适用于源码、测试、构建/部署配置、产品文档，或 OpenSpec 目录以外的任意文件；不得借此跳过代码 provenance。
+- 同一任务同时包含 OpenSpec 流程文件和受追踪代码时，必须先完成 OpenSpec 操作，再 start；start 到 finish 之间不得编辑 OpenSpec 路径。若 finish 后还需归档或更新 tasks，再以 OpenSpec 例外单独完成。
 
 ## 必须执行的工作流
 
 1. 确认项目根目录已由 `ai-prov init` 创建 `.ai-provenance/`。
 2. 为本 Agent 实例生成一个 UUID `agent_instance_id`，调用 `provenance.session_start` 时提供简短准确的 `task`、该 ID；可用时提供 `agent` 与 `model`。
 3. 保存工具返回的 `session_id` **及** `agent_instance_id`。未取得有效 `session_id` 前，禁止使用编辑器、patch、workspace-edit、文件写入工具、重命名工具、删除工具或任何能够修改文件的 shell 命令。
-4. 将返回的 `session_id` 与 `agent_instance_id` 写入可跨上下文压缩保留的任务状态；仅在 start 成功后进行代码或文档修改。
+4. 将返回的 `session_id` 与 `agent_instance_id` 写入可跨上下文压缩保留的任务状态；仅在 start 成功后进行受追踪代码或文档修改。OpenSpec 流程文件遵循上文例外。
 5. 每次准备调用 `provenance.session_start` 前，先调用 `provenance.session_recover`；返回唯一 active session 时必须复用其两个 ID。正常任务不得为 heartbeat 中断或延长执行；只有超过 24 小时且宿主能独立后台执行时，才可选用 `provenance.session_heartbeat`。完成时使用两个 ID 调用 `provenance.session_finish`。即使没有文件变化或 Diff 为空，也必须调用 finish。
 6. 提交前可选调用 `provenance.verify`，参数使用 `scope: "staged"` 和 `strict: true`。
 

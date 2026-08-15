@@ -44,6 +44,9 @@ func Install(options Options) (Result, error) {
 	}
 	if options.InstallRoot != "" {
 		layout.InstallRoot = filepath.ToSlash(options.InstallRoot)
+		if options.Environment.GOOS == "windows" {
+			layout.InstallRoot = windowsReceiptPath(layout.InstallRoot)
+		}
 		layout.ReceiptPath = filepath.ToSlash(filepath.Join(filepath.Dir(layout.ReceiptPath), "install-receipt.json"))
 		ext := ""
 		if options.Environment.GOOS == "windows" {
