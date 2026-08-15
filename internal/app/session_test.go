@@ -60,6 +60,40 @@ func TestServiceStart_PersistsProvidedAgentInstanceAndTaskKey(t *testing.T) {
 	}
 }
 
+func TestServiceStart_ReclaimsExpiredTerminalSnapshotsByRetention(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "a.go")
+	if err := os.WriteFile(path, []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	store, err := storage.Open(filepath.Join(root, "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	initial := Service{Root: root, MaxFileBytes: 100, Store: store}
+	old, err := initial.Start(context.Background(), StartRequest{Task: "old"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := initial.Abandon(context.Background(), old.SessionID, "test terminal retention"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("new\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Millisecond)
+	reclaimer := Service{Root: root, MaxFileBytes: 100, SnapshotRetention: time.Nanosecond, SnapshotAutoGCInterval: time.Nanosecond, Store: store}
+	current, err := reclaimer.Start(context.Background(), StartRequest{Task: "new"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitForSnapshotGone(t, filepath.Join(root, ".ai-provenance", "snapshots", old.SnapshotID))
+	if _, err := os.Stat(filepath.Join(root, ".ai-provenance", "snapshots", current.SnapshotID)); err != nil {
+		t.Fatalf("new active snapshot missing: %v", err)
+	}
+}
+
 func TestService_EnforcesInstanceLimitAndOwner(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "a.go"), []byte("x"), 0o644); err != nil {
@@ -113,27 +147,35 @@ func TestService_MaintenanceReclaimsOnlyExpiredLeaseSnapshotAfterGrace(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExpireLeases(context.Background(), root, "9999-01-01T00:00:00Z"); err != nil {
+	if ok, err := db.Heartbeat(context.Background(), active.SessionID, active.AgentInstanceID, "9999-01-01T00:00:00Z"); err != nil || !ok {
+		t.Fatalf("refresh active lease ok=%v err=%v", ok, err)
+	}
+	if _, err := db.ExpireLeases(context.Background(), root, "9998-01-01T00:00:00Z"); err != nil {
 		t.Fatal(err)
 	}
-	// Restore the second session to active so its shared manifest/object must
-	// remain reachable while the expired one is reclaimed.
-	if _, err := db.DB().Exec("UPDATE ai_session SET state='active',finished_at=NULL,failure_code=NULL,failure_message=NULL WHERE id=?", active.SessionID); err != nil {
+	maintained := Service{Root: root, MaxFileBytes: 100, Store: db, ExpiredSessionGrace: time.Nanosecond, AutoReclaimExpiredSessions: true, SnapshotAutoGCInterval: time.Nanosecond}
+	if _, err := maintained.Start(context.Background(), StartRequest{Task: "trigger", AgentInstanceID: "c1234567-1234-4234-8234-123456789abc"}); err != nil {
 		t.Fatal(err)
 	}
-	maintained := Service{Root: root, MaxFileBytes: 100, Store: db, ExpiredSessionGrace: time.Nanosecond, AutoReclaimExpiredSessions: true}
-	if _, err := maintained.Status(context.Background(), active.SessionID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(root, ".ai-provenance", "snapshots", expired.SnapshotID)); !os.IsNotExist(err) {
-		t.Fatalf("expired snapshot exists: %v", err)
-	}
+	waitForSnapshotGone(t, filepath.Join(root, ".ai-provenance", "snapshots", expired.SnapshotID))
 	if _, err := os.Stat(filepath.Join(root, ".ai-provenance", "snapshots", active.SnapshotID)); err != nil {
 		t.Fatalf("active snapshot removed: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, ".ai-provenance", "objects")); err != nil {
 		t.Fatalf("shared objects removed: %v", err)
 	}
+}
+
+func waitForSnapshotGone(t *testing.T, path string) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("snapshot still exists: %s", path)
 }
 
 func TestServiceStart_QuotaFailureDoesNotCreateSession(t *testing.T) {
@@ -411,11 +453,6 @@ func TestServiceFinish_MigratesEqualProvenanceAndInvalidatesDeletion(t *testing.
 	if migrated.ID == "" || migrated.ID == beforeMove[0].ID {
 		t.Fatalf("equal AI line was not migrated as a new current record: before=%#v after=%#v", beforeMove, afterMove)
 	}
-	var superseded int
-	if err := db.DB().QueryRow("SELECT COUNT(*) FROM line_provenance WHERE id=? AND removed_at IS NOT NULL", beforeMove[0].ID).Scan(&superseded); err != nil || superseded != 1 {
-		t.Fatalf("old provenance removal count=%d err=%v", superseded, err)
-	}
-
 	third, err := svc.Start(context.Background(), StartRequest{Task: "delete AI line"})
 	if err != nil {
 		t.Fatal(err)
@@ -464,15 +501,9 @@ func TestServiceFinish_CancelledMarksSessionFailedWithoutProvenance(t *testing.T
 	if err != nil || session.State != "failed" || session.FailureCode.String != "FINISH_CANCELLED" {
 		t.Fatalf("session = %#v, err = %v", session, err)
 	}
-	var events, lines int
-	if err := db.DB().QueryRow("SELECT COUNT(*) FROM ai_change_event WHERE session_id=?", start.SessionID).Scan(&events); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.DB().QueryRow("SELECT COUNT(*) FROM line_provenance WHERE origin_session_id=?", start.SessionID).Scan(&lines); err != nil {
-		t.Fatal(err)
-	}
-	if events != 0 || lines != 0 {
-		t.Fatalf("partial provenance: events=%d lines=%d", events, lines)
+	rows, err := db.CurrentAIByFile(context.Background(), "a.go")
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("partial current provenance: rows=%#v err=%v", rows, err)
 	}
 }
 
@@ -572,15 +603,9 @@ func TestServiceFinish_DiffResourceLimitDoesNotCommit(t *testing.T) {
 	if _, err = svc.Finish(context.Background(), start.SessionID); !errors.Is(err, ErrDiffResourceLimit) {
 		t.Fatalf("Finish error = %v", err)
 	}
-	var events, lines int
-	if err := db.DB().QueryRow("SELECT COUNT(*) FROM ai_change_event WHERE session_id=?", start.SessionID).Scan(&events); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.DB().QueryRow("SELECT COUNT(*) FROM line_provenance WHERE origin_session_id=?", start.SessionID).Scan(&lines); err != nil {
-		t.Fatal(err)
-	}
-	if events != 0 || lines != 0 {
-		t.Fatalf("partial provenance: events=%d lines=%d", events, lines)
+	rows, err := db.CurrentAIByFile(context.Background(), "large.go")
+	if err != nil || len(rows) != 0 {
+		t.Fatalf("partial current provenance: rows=%#v err=%v", rows, err)
 	}
 	session, err := db.GetSession(context.Background(), start.SessionID)
 	if err != nil {

@@ -120,7 +120,7 @@ func Bootstrap(start string, logger *slog.Logger) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	svc := &app.Service{Root: root, MaxFileBytes: cfg.MaxFileBytes, MaxSnapshotBytes: cfg.SnapshotMaxBytes, LeaseTimeout: time.Duration(cfg.LeaseTimeoutMinutes) * time.Minute, MaxActivePerAgentInstance: cfg.MaxActivePerAgentInstance, ExpiredSessionGrace: time.Duration(cfg.ExpiredSessionGraceHours) * time.Hour, AutoReclaimExpiredSessions: cfg.AutoReclaimExpiredSessions, Store: store}
+	svc := &app.Service{Root: root, MaxFileBytes: cfg.MaxFileBytes, MaxSnapshotBytes: cfg.SnapshotMaxBytes, LeaseTimeout: time.Duration(cfg.LeaseTimeoutMinutes) * time.Minute, SnapshotRetention: time.Duration(cfg.SnapshotRetentionHours) * time.Hour, SnapshotAutoGCInterval: time.Duration(cfg.SnapshotAutoGCIntervalHours) * time.Hour, MaxActivePerAgentInstance: cfg.MaxActivePerAgentInstance, ExpiredSessionGrace: time.Duration(cfg.ExpiredSessionGraceHours) * time.Hour, AutoReclaimExpiredSessions: cfg.AutoReclaimExpiredSessions, Store: store}
 	srv := New(svc, logger)
 	srv.cleanup = func() { _ = store.Close() }
 	return srv, nil
@@ -183,7 +183,7 @@ func (r *workspaceResolver) open(start string) (*projectRuntime, *mcp.CallToolRe
 	if err != nil {
 		return nil, nil, mapError(err)
 	}
-	project := &projectRuntime{svc: &app.Service{Root: root, MaxFileBytes: cfg.MaxFileBytes, MaxSnapshotBytes: cfg.SnapshotMaxBytes, LeaseTimeout: time.Duration(cfg.LeaseTimeoutMinutes) * time.Minute, MaxActivePerAgentInstance: cfg.MaxActivePerAgentInstance, ExpiredSessionGrace: time.Duration(cfg.ExpiredSessionGraceHours) * time.Hour, AutoReclaimExpiredSessions: cfg.AutoReclaimExpiredSessions, Store: store}, verifier: provenance.Verifier{Git: git.Reader{Root: root}, Store: store}}
+	project := &projectRuntime{svc: &app.Service{Root: root, MaxFileBytes: cfg.MaxFileBytes, MaxSnapshotBytes: cfg.SnapshotMaxBytes, LeaseTimeout: time.Duration(cfg.LeaseTimeoutMinutes) * time.Minute, SnapshotRetention: time.Duration(cfg.SnapshotRetentionHours) * time.Hour, SnapshotAutoGCInterval: time.Duration(cfg.SnapshotAutoGCIntervalHours) * time.Hour, MaxActivePerAgentInstance: cfg.MaxActivePerAgentInstance, ExpiredSessionGrace: time.Duration(cfg.ExpiredSessionGraceHours) * time.Hour, AutoReclaimExpiredSessions: cfg.AutoReclaimExpiredSessions, Store: store}, verifier: provenance.Verifier{Git: git.Reader{Root: root}, Store: store}}
 	r.projects[root] = project
 	return project, nil, nil
 }

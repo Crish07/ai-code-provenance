@@ -55,24 +55,3 @@ func TestContentHash_NormalizesCRLF(t *testing.T) {
 		t.Fatal("line content hash must normalize CRLF")
 	}
 }
-
-func TestMigrate(t *testing.T) {
-	got := Migrate([]string{"old", "keep", "keep"}, []string{"new", "keep", "changed"}, []Source{Unknown, AI, Unknown})
-	if got[0] != Unknown || got[1] != AI || got[2] != Unknown {
-		t.Fatalf("%#v", got)
-	}
-}
-
-func TestMigrateWithRemovals(t *testing.T) {
-	v := MigrateWithRemovals([]string{"a", "b"}, []string{"b"}, []Source{AI, Unknown})
-	if len(v.Removed) != 1 || v.Removed[0] != 0 || v.Sources[0] != Unknown {
-		t.Fatalf("%#v", v)
-	}
-}
-
-func TestMigrate_RewriteDoesNotInherit(t *testing.T) {
-	v := Migrate([]string{"ai"}, []string{"human rewrite"}, []Source{AI})
-	if v[0] != Unknown {
-		t.Fatal(v)
-	}
-}

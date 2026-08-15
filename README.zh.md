@@ -44,7 +44,7 @@ ai-prov init
 
 1. 为 Agent 实例生成并持久化一个 UUID `agent_instance_id`。
 2. 编辑前调用 `provenance.session_start`，持久化返回的 `session_id` 和 `agent_instance_id`。
-3. 长任务期间使用两个 ID 调用 `provenance.session_heartbeat`。
+3. 每次准备新建 session 前，先调用 `provenance.session_recover`；若返回唯一 active session，复用其两个 ID，不得新建 baseline。
 4. 完成时用两个 ID 调用 `provenance.session_finish`，必须得到 `finished`。
 5. 提交前可运行 `ai-prov verify --scope staged --strict`。
 
@@ -76,7 +76,7 @@ AI 来源覆盖率只表示 staged/worktree 新增有效行中匹配已完成 AI
 | `ai-prov snapshots gc --json`            | 将 GC 预览/执行结果序列化为 JSON。                                                                                                    |
 | `ai-prov snapshots gc --apply`           | 按当前候选集实际删除终态 snapshot/object，属于破坏性操作；应先运行不带 `--apply` 的命令核对范围。可与 `--older-than`、`--json` 组合。 |
 
-lease 过期的 snapshot 仅在项目显式启用 `auto_reclaim_expired_sessions: true` 后，才会在宽限期结束时自动进入回收流程；普通 CLI GC 始终默认 dry-run。
+自动回收策略：每个项目每天首次 `session_start` 会检查一次可回收的 snapshot。已结束的 session snapshot 默认保留 7 天；因 session lease 过期而失败的 snapshot 也在失败满 7 天后可回收。active session 的 snapshot 不会被自动删除。默认 session lease 为 24 小时，适合隔夜恢复；正常任务不需要 heartbeat。普通 CLI GC 始终默认 dry-run，可用于预览或提前手动回收。
 
 ### 覆盖率校验与 report 序列化输出
 

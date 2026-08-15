@@ -56,12 +56,6 @@ func Lines(s string) []string {
 	return strings.Split(strings.TrimSuffix(s, "\n"), "\n")
 }
 
-func Diff(before, after string) []Edit {
-	a, b := Lines(before), Lines(after)
-	out, _ := myers(a, b, len(a)+len(b))
-	return out
-}
-
 func DiffWithLimit(before, after string, maxEdits int) ([]Edit, error) {
 	a, b := Lines(before), Lines(after)
 	return myers(a, b, maxEdits)
@@ -187,22 +181,4 @@ func HasChanges(edits []Edit) bool {
 		}
 	}
 	return false
-}
-
-func Renames(deleted, added map[string]string) map[string]string {
-	out := map[string]string{}
-	for old, h := range deleted {
-		n := 0
-		var next string
-		for p, v := range added {
-			if v == h {
-				n++
-				next = p
-			}
-		}
-		if n == 1 {
-			out[old] = next
-		}
-	}
-	return out
 }

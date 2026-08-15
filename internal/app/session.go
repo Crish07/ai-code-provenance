@@ -19,9 +19,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
-	"sync"
 	"time"
 )
 
@@ -104,26 +102,25 @@ type Service struct {
 	MaxSnapshotBytes           int64
 	Store                      *storage.Store
 	LeaseTimeout               time.Duration
+	SnapshotRetention          time.Duration
+	SnapshotAutoGCInterval     time.Duration
 	MaxActivePerAgentInstance  int
 	ExpiredSessionGrace        time.Duration
 	AutoReclaimExpiredSessions bool
 }
 
 type currentFile struct {
-	index  int
 	path   string
 	before []byte
 	after  []byte
-	exists bool
-}
-
-type scannedFile struct {
-	currentFile
-	err error
 }
 
 func (s Service) Start(ctx context.Context, r StartRequest) (StartResult, error) {
 	s.maintain(ctx)
+	gcOwner, err := s.acquireSnapshotGC(ctx)
+	if err != nil {
+		slog.Default().Warn("snapshot gc lease acquisition failed", "error", err)
+	}
 	instance := r.AgentInstanceID
 	var e error
 	if instance == "" {
@@ -146,6 +143,15 @@ func (s Service) Start(ctx context.Context, r StartRequest) (StartResult, error)
 		return StartResult{}, e
 	}
 	snap, e := snapshot.CreateWithQuota(s.Root, id, s.MaxFileBytes, s.MaxSnapshotBytes)
+	var quota *snapshot.QuotaExceededError
+	if e != nil && gcOwner != "" && errors.As(e, &quota) {
+		if err := s.runSnapshotGC(ctx, gcOwner); err != nil {
+			slog.Default().Warn("snapshot gc fallback failed", "error", err)
+		} else {
+			snap, e = snapshot.CreateWithQuota(s.Root, id, s.MaxFileBytes, s.MaxSnapshotBytes)
+		}
+		gcOwner = ""
+	}
 	if e != nil {
 		return StartResult{}, e
 	}
@@ -166,30 +172,91 @@ func (s Service) Start(ctx context.Context, r StartRequest) (StartResult, error)
 	if e = s.Store.CreateSession(ctx, storage.Session{ID: id, ProjectPath: s.Root, Task: r.Task, Agent: agent, AgentInstanceID: instance, Model: model, TaskKey: taskKey, LastHeartbeatAt: heartbeat, State: "active", SnapshotID: id, StartedAt: startedAt}); e != nil {
 		return StartResult{}, e
 	}
-	return StartResult{SessionID: id, SnapshotID: id, State: "active", StartedAt: startedAt, AgentInstanceID: instance, TrackedFiles: len(snap.Files), SkippedFiles: snap.SkippedCount}, nil
+	result := StartResult{SessionID: id, SnapshotID: id, State: "active", StartedAt: startedAt, AgentInstanceID: instance, TrackedFiles: len(snap.Files), SkippedFiles: snap.SkippedCount}
+	if gcOwner != "" {
+		go s.runSnapshotGCBackground(gcOwner)
+	}
+	return result, nil
+}
+
+const snapshotGCLockDuration = 10 * time.Minute
+
+func (s Service) acquireSnapshotGC(ctx context.Context) (string, error) {
+	if s.SnapshotAutoGCInterval <= 0 {
+		return "", nil
+	}
+	owner, err := uuid()
+	if err != nil {
+		return "", err
+	}
+	now := time.Now().UTC()
+	ok, err := s.Store.TryAcquireMaintenance(ctx, storage.SnapshotGCMaintenance, owner, now.Format(time.RFC3339Nano), now.Add(snapshotGCLockDuration).Format(time.RFC3339Nano), now.Add(-s.SnapshotAutoGCInterval).Format(time.RFC3339Nano))
+	if err != nil || !ok {
+		return "", err
+	}
+	return owner, nil
+}
+
+func (s Service) runSnapshotGCBackground(owner string) {
+	ctx, cancel := context.WithTimeout(context.Background(), snapshotGCLockDuration-time.Second)
+	defer cancel()
+	if err := s.runSnapshotGC(ctx, owner); err != nil {
+		slog.Default().Warn("automatic snapshot gc failed", "error", err)
+	}
+}
+
+func (s Service) runSnapshotGC(ctx context.Context, owner string) error {
+	ids, err := s.snapshotGCCandidates(ctx)
+	if err == nil && len(ids) > 0 {
+		_, err = snapshot.GCApply(s.Root, ids)
+	}
+	if err == nil {
+		if completeErr := s.Store.CompleteMaintenance(ctx, storage.SnapshotGCMaintenance, owner, time.Now().UTC().Format(time.RFC3339Nano)); completeErr != nil {
+			return completeErr
+		}
+		return nil
+	}
+	message := err.Error()
+	if len(message) > 1024 {
+		message = message[:1024]
+	}
+	if failErr := s.Store.FailMaintenance(context.Background(), storage.SnapshotGCMaintenance, owner, message); failErr != nil {
+		slog.Default().Warn("snapshot gc failure state update failed", "error", failErr)
+	}
+	return err
+}
+
+func (s Service) snapshotGCCandidates(ctx context.Context) ([]string, error) {
+	ids := map[string]struct{}{}
+	if s.SnapshotRetention > 0 {
+		sessions, err := s.Store.TerminalSessionsBefore(ctx, s.Root, time.Now().UTC().Add(-s.SnapshotRetention).Format(time.RFC3339Nano))
+		if err != nil {
+			return nil, err
+		}
+		for _, session := range sessions {
+			ids[session.SnapshotID] = struct{}{}
+		}
+	}
+	if s.AutoReclaimExpiredSessions && s.ExpiredSessionGrace > 0 {
+		sessions, err := s.Store.LeaseExpiredSessionsBefore(ctx, s.Root, time.Now().UTC().Add(-s.ExpiredSessionGrace).Format(time.RFC3339Nano))
+		if err != nil {
+			return nil, err
+		}
+		for _, session := range sessions {
+			ids[session.SnapshotID] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(ids))
+	for id := range ids {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 func (s Service) maintain(ctx context.Context) {
 	if s.LeaseTimeout > 0 {
 		_, _ = s.Store.ExpireLeases(ctx, s.Root, time.Now().UTC().Add(-s.LeaseTimeout).Format(time.RFC3339Nano))
-	}
-	if !s.AutoReclaimExpiredSessions || s.ExpiredSessionGrace <= 0 {
-		return
-	}
-	sessions, err := s.Store.LeaseExpiredSessionsBefore(ctx, s.Root, time.Now().UTC().Add(-s.ExpiredSessionGrace).Format(time.RFC3339Nano))
-	if err != nil {
-		slog.Default().Warn("lease snapshot candidate query failed", "error", err)
-		return
-	}
-	ids := make([]string, 0, len(sessions))
-	for _, session := range sessions {
-		ids = append(ids, session.SnapshotID)
-	}
-	if len(ids) == 0 {
-		return
-	}
-	if _, err := snapshot.GCApply(s.Root, ids); err != nil {
-		slog.Default().Warn("lease snapshot reclaim failed", "error", err)
 	}
 }
 
@@ -466,97 +533,6 @@ func (s Service) provenanceForEdits(ctx context.Context, sessionID, filePath, be
 		removed = append(removed, row.ID)
 	}
 	return lines, removed, inserted, nil
-}
-
-// scanCurrentFiles reads and hashes every manifest file independently of
-// Agent-reported paths. It retains bytes only for changed/deleted candidates,
-// then orders them by manifest position for deterministic later processing.
-func (s Service) scanCurrentFiles(ctx context.Context, files []snapshot.File) ([]currentFile, int, error) {
-	workers := runtime.GOMAXPROCS(0)
-	if workers < 1 {
-		workers = 1
-	}
-	if workers > 8 {
-		workers = 8
-	}
-	jobs := make(chan int)
-	results := make(chan scannedFile, workers)
-	workCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	var wg sync.WaitGroup
-	for range workers {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for {
-				select {
-				case <-workCtx.Done():
-					return
-				case index, ok := <-jobs:
-					if !ok {
-						return
-					}
-					file := files[index]
-					after, err := os.ReadFile(filepath.Join(s.Root, filepath.FromSlash(file.Path)))
-					exists := err == nil
-					if err != nil && !errors.Is(err, os.ErrNotExist) {
-						select {
-						case results <- scannedFile{currentFile: currentFile{index: index}, err: err}:
-						case <-workCtx.Done():
-						}
-						return
-					}
-					after = snapshot.Normalize(after)
-					result := scannedFile{currentFile: currentFile{index: index, exists: exists}}
-					if !exists || !snapshot.Matches(after, file.Hash) {
-						result.after = after
-					}
-					select {
-					case results <- result:
-					case <-workCtx.Done():
-						return
-					}
-				}
-			}
-		}()
-	}
-	go func() {
-		defer close(jobs)
-		for index := range files {
-			select {
-			case jobs <- index:
-			case <-workCtx.Done():
-				return
-			}
-		}
-	}()
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	candidates := make([]currentFile, 0)
-	scanned := 0
-	var firstErr error
-	for result := range results {
-		scanned++
-		if result.err != nil && firstErr == nil {
-			firstErr = result.err
-			cancel()
-			continue
-		}
-		if result.after != nil || !result.exists {
-			candidates = append(candidates, result.currentFile)
-		}
-	}
-	if firstErr != nil {
-		return candidates, scanned, firstErr
-	}
-	if err := ctx.Err(); err != nil {
-		return candidates, scanned, err
-	}
-	sort.Slice(candidates, func(i, j int) bool { return candidates[i].index < candidates[j].index })
-	return candidates, scanned, nil
 }
 
 func (s Service) interruptFinish(id, stage string, scanned, total, candidates int, cause error) error {
