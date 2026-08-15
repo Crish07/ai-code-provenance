@@ -18,6 +18,7 @@ func TestDefaultLayout_PlatformPaths(t *testing.T) {
 		{"darwin", "darwin", "/Users/a", "", "/Users/a/.local/bin", "/Users/a/.local/share/ai-prov/install-receipt.json", ""},
 		{"linux", "linux", "/home/a", "", "/home/a/.local/bin", "/home/a/.local/share/ai-prov/install-receipt.json", ""},
 		{"windows", "windows", "C:/Users/a", "C:/Users/a/AppData/Local", "C:/Users/a/AppData/Local/Programs/ai-prov", "C:/Users/a/AppData/Local/ai-prov/install-receipt.json", ".exe"},
+		{"windows backslashes", "windows", `C:\Users\a`, `C:\Users\a\AppData\Local`, "C:/Users/a/AppData/Local/Programs/ai-prov", "C:/Users/a/AppData/Local/ai-prov/install-receipt.json", ".exe"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -40,6 +41,31 @@ func TestDefaultLayout_RejectsIncompleteOrUnsupportedEnvironment(t *testing.T) {
 		if _, err := DefaultLayout(env); err == nil {
 			t.Fatalf("DefaultLayout(%#v) succeeded", env)
 		}
+	}
+}
+
+func TestInstall_WindowsBackslashEnvironmentAndOverrideAreCanonicalized(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "release")
+	if err := os.Mkdir(source, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"ai-prov.exe", "ai-prov-mcp.exe"} {
+		if err := os.WriteFile(filepath.Join(source, name), []byte(name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := Install(Options{
+		Environment: Environment{GOOS: "windows", Home: `C:\Users\a`, LocalAppData: `C:\Users\a\AppData\Local`},
+		SourceDir:   source,
+		InstallRoot: `C:\Users\a\bin\ai-prov`,
+		DryRun:      true,
+	})
+	if err != nil {
+		t.Fatalf("Install() error = %v", err)
+	}
+	if result.Layout.InstallRoot != "C:/Users/a/bin/ai-prov" || result.Layout.ReceiptPath != "C:/Users/a/AppData/Local/ai-prov/install-receipt.json" {
+		t.Fatalf("layout = %#v", result.Layout)
 	}
 }
 

@@ -5,6 +5,10 @@ provenance.session_start before editing and provenance.session_finish before
 reporting completion. Finish must return finished. Any MCP failure means the
 task is incomplete and must be reported.
 
+## OpenSpec exception
+
+Do not use provenance for OpenSpec-only process work in `openspec/changes/**` or `openspec/specs/**` (including proposal, design, tasks, change specs, and archive operations). This never covers source, tests, configuration, product documentation, or files outside those paths. For mixed work, complete OpenSpec operations before start and do not edit OpenSpec files between start and finish.
+
 ## Workflow
 
 1. Confirm ai-prov init has created .ai-provenance.
