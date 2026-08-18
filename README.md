@@ -90,7 +90,7 @@ By default, the hook adds `[AI:<n>%]` to the commit subject and appends `AI-Line
 
 ### Workspace ignore rules
 
-`session_start` and `session_finish` read both the existing root `.gitignore` and `.ai-provenance/.ai-provenanceignore`. They use a line-oriented, last-match-wins Git-style subset: blank lines, `#` comments, `!` negation, `*`, `?`, `[]`, `**`, root-relative paths, and recursive directory rules ending in `/` are supported.
+`session_start` and `session_finish` read both the existing root `.gitignore` and `.ai-provenance/.ai-provenanceignore`. They use a line-oriented, last-match-wins Git-style subset: blank lines, `#` comments, `!` negation, `*`, `?`, `[]`, `**`, root-relative paths, and recursive directory rules ending in `/` are supported. `init` seeds the dedicated file with only `.git/` and `.ai-provenance/`.
 
 For example, this rule prevents all GitNexus analysis cache files from entering a snapshot or finish diff:
 
@@ -98,7 +98,7 @@ For example, this rule prevents all GitNexus analysis cache files from entering 
 .gitnexus/
 ```
 
-`.gitnexus/` is also an internally skipped directory. Use the dedicated file only for non-product content such as caches and build outputs; never exclude source, tests, configuration, or product documentation to bypass provenance. Nested `.gitignore` files, Git attributes, and escaped trailing-space semantics are not implemented.
+The dedicated file is the primary home for project-specific additions: add cache and dependency rules such as `.gitnexus/` and `node_modules/` when your project needs them. `.git/` and `.ai-provenance/` remain non-overridable safety boundaries even if removed from the file. Use dedicated rules only for non-product content such as caches and build outputs; never exclude source, tests, configuration, or product documentation to bypass provenance. Nested `.gitignore` files, Git attributes, and escaped trailing-space semantics are not implemented.
 
 ## What coverage means
 
@@ -110,18 +110,72 @@ Lines matching AI provenance: 5
 AI source coverage: 100%
 ```
 
+## Project configuration: `config.yaml`
+
+`ai-prov init` writes the following project-level defaults to `.ai-provenance/config.yaml`. Capacities are bytes; durations are hours or minutes as named. The file uses strict field validation: unknown fields, invalid types, non-positive limit values, or an unsupported `schema_version` prevent the project configuration from loading.
+
+```yaml
+schema_version: 1
+max_file_bytes: 5242880
+strict_verify: false
+snapshot_retention_hours: 168
+snapshot_max_bytes: 1073741824
+lease_timeout_minutes: 1440
+max_active_per_agent_instance: 1
+expired_session_grace_hours: 168
+auto_reclaim_expired_sessions: true
+snapshot_auto_gc_interval_hours: 24
+```
+
+| Field | Default | Purpose and boundary |
+| --- | ---: | --- |
+| `schema_version` | `1` | The only configuration format version currently supported; do not change it manually. |
+| `max_file_bytes` | `5242880` (5 MiB) | Maximum size for one workspace text file to enter snapshot/finish scanning; larger files are skipped as `too_large`. Must be positive. |
+| `strict_verify` | `false` | Default strictness for `verify`, and the Hook `strict` default when Hook strictness is not explicitly configured. Strict verification fails when added lines are uncovered. |
+| `snapshot_retention_hours` | `168` (7 days) | Retention period for ordinary terminal snapshots. The first automatic GC attempt at `session_start` each day selects finished/failed sessions using this value. Must be positive. |
+| `snapshot_max_bytes` | `1073741824` (1 GiB) | Total capacity limit for the content-addressed `.ai-provenance/objects` store. Before creating a snapshot, ai-prov calculates unique new content; an over-limit start creates no session. Must be positive. |
+| `lease_timeout_minutes` | `1440` (24 hours) | An active session whose last heartbeat exceeds this value becomes `SESSION_LEASE_EXPIRED` during the next session-maintenance operation. Must be positive. |
+| `max_active_per_agent_instance` | `1` | Number of simultaneous active sessions allowed for one `agent_instance_id`; prevents an Agent from creating duplicate baselines. Must be positive. |
+| `expired_session_grace_hours` | `168` (7 days) | When lease-expiry auto reclaim is enabled, a `SESSION_LEASE_EXPIRED` snapshot becomes eligible through the lease-specific path after this many failed hours. Ordinary terminal retention applies independently; both are seven days by default. Must be positive. |
+| `auto_reclaim_expired_sessions` | `true` | Enables the lease-specific automatic-GC candidate path for `SESSION_LEASE_EXPIRED` sessions. `false` disables only that additional path, not ordinary terminal-retention cleanup. |
+| `snapshot_auto_gc_interval_hours` | `24` | Minimum interval between automatic GC attempts per project. It is currently triggered after `session_start` acquires the project maintenance lease. Must be positive. |
+
+### Optional Hook configuration
+
+The initial `config.yaml` has no `hook` section. When a Hook is installed, its effective defaults—unless explicitly configured—are: `strict` inherits `strict_verify`, `write_trailer: true`, `title_coverage: true`, trailer fields `lines,agent`, and `comments: false`. Prefer commands to avoid invalid handwritten fields:
+
+```sh
+ai-prov hook config show
+ai-prov hook config set --fields coverage,lines,agent --comments=false
+ai-prov hook config reset
+```
+
+If you must edit the file, `hook` accepts only the following fields:
+
+```yaml
+hook:
+  strict: false
+  write_trailer: true
+  title_coverage: true
+  trailer:
+    fields: [lines, agent]
+    comments: false
+```
+
+`trailer.fields` accepts only `coverage`, `lines`, `agent`, and `provenance-id`; it cannot be empty or contain duplicates. `title_coverage` controls whether `[AI:<n>%]` is appended to the commit subject. When `write_trailer` is `false`, ai-prov does not append its trailer, but the Hook still removes stale ai-prov trailers and leaves unrelated Git trailers untouched.
+
 ## Complete CLI reference
 
 Except for `install`, `uninstall`, `version`, and `completion`, project commands must be run from a project root where `ai-prov init` has completed. Append `--help` to any command to view the exact options supported by your installed version.
 
 ### Initialization, status, and version
 
-| Command                                       | Purpose and notes                                                                                                                                                             |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Command                                       | Purpose and notes                                                                                                                                                                                                                            |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ai-prov init`                                | Initializes `.ai-provenance/`, default configuration, the SQLite database, the snapshot directory, and the dedicated `.ai-provenanceignore` file. It is safe to run again, never uploads code, and does not overwrite existing ignore rules. |
-| `ai-prov status`                              | Prints the absolute project path and counts of `active`, `finished`, and `failed` sessions. Use it to confirm the project is usable.                                          |
-| `ai-prov version`                             | Prints the CLI version, commit, and build time. Run it first when checking that Rules, MCP, and binaries are from the same version.                                           |
-| `ai-prov --help` / `ai-prov <command> --help` | Lists commands or subcommands and their flags; this is the authoritative entry point for discovering capabilities actually available locally.                                 |
+| `ai-prov status`                              | Prints the absolute project path and counts of `active`, `finished`, and `failed` sessions. Use it to confirm the project is usable.                                                                                                         |
+| `ai-prov version`                             | Prints the CLI version, commit, and build time. Run it first when checking that Rules, MCP, and binaries are from the same version.                                                                                                          |
+| `ai-prov --help` / `ai-prov <command> --help` | Lists commands or subcommands and their flags; this is the authoritative entry point for discovering capabilities actually available locally.                                                                                                |
 
 ### Session and snapshot management
 

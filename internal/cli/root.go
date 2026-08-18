@@ -14,9 +14,12 @@ import (
 
 	"ai-prov/internal/config"
 	"ai-prov/internal/storage"
+	"ai-prov/internal/workspace"
 
 	"github.com/spf13/cobra"
 )
+
+const legacyDefaultIgnoreRules = "# ai-prov workspace ignore rules (Git-style subset)\n"
 
 // BuildInfo identifies the binary that is running.
 type BuildInfo struct {
@@ -49,12 +52,16 @@ func newInitCommand() *cobra.Command {
 			return err
 		}
 		ignorePath := filepath.Join(dir, ".ai-provenanceignore")
-		if _, err = os.Stat(ignorePath); errors.Is(err, os.ErrNotExist) {
-			if err = os.WriteFile(ignorePath, []byte("# ai-prov workspace ignore rules (Git-style subset)\n"), 0o644); err != nil {
+		if contents, readErr := os.ReadFile(ignorePath); errors.Is(readErr, os.ErrNotExist) {
+			if err = os.WriteFile(ignorePath, []byte(workspace.DefaultIgnoreRules), 0o644); err != nil {
 				return err
 			}
-		} else if err != nil {
-			return err
+		} else if readErr != nil {
+			return readErr
+		} else if string(contents) == legacyDefaultIgnoreRules {
+			if err = os.WriteFile(ignorePath, []byte(workspace.DefaultIgnoreRules), 0o644); err != nil {
+				return err
+			}
 		}
 		if _, err = config.Load(root); errors.Is(err, config.ErrProjectNotInitialized) {
 			if err = config.Save(root, config.Default()); err != nil {

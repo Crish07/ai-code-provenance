@@ -49,7 +49,7 @@ func Scan(root string, maxBytes int64) ([]File, []Skipped, error) {
 			return nil
 		}
 		if entry.IsDir() {
-			if hiddenDir(rel) || (ignored.ignored(rel, true) && !ignored.mayIncludeDescendant(rel)) {
+			if protectedDir(rel) || (ignored.ignored(rel, true) && !ignored.mayIncludeDescendant(rel)) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -156,10 +156,13 @@ func loadIgnores(root string) (ignoreMatcher, error) {
 	return matcher, nil
 }
 
-func hiddenDir(path string) bool {
+// protectedDir is the non-configurable scan boundary for repository metadata
+// and ai-prov's own potentially source-bearing state. The other default
+// exclusions are intentionally seeded into .ai-provenanceignore instead.
+func protectedDir(path string) bool {
 	first := strings.Split(path, "/")[0]
 	switch first {
-	case ".git", ".ai-provenance", ".agents", ".claude", ".codex", ".cursor", ".trae", ".gitnexus", "node_modules", "vendor", "dist", "build":
+	case ".git", ".ai-provenance":
 		return true
 	}
 	return false

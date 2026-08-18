@@ -16,10 +16,6 @@ Process documents created, updated, or archived by `openspec` are outside code-p
 - This exception never applies to source code, tests, build/deployment configuration, product documentation, or any file outside the OpenSpec paths; it must not be used to bypass code provenance.
 - For mixed work, finish all OpenSpec operations before start, and do not edit OpenSpec paths between start and finish. If archiving or task updates remain after finish, perform them separately under this exception.
 
-## Analysis-cache directory
-
-`.gitnexus/` is an ai-prov internally skipped analysis-cache directory. It never enters a snapshot or finish diff, so generating or cleaning its cache does not require a provenance session. This exception applies only to that tool cache; source, tests, configuration, and product documentation must never be placed there to bypass provenance.
-
 ## Required workflow
 
 1. Confirm that `ai-prov init` has created `.ai-provenance/` in the project root.
