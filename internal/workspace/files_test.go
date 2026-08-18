@@ -59,3 +59,67 @@ func TestScan_SkipsAgentMetadataDirectories(t *testing.T) {
 		t.Fatalf("files = %#v, want only main.go", files)
 	}
 }
+
+func TestScan_GitStyleIgnoreRulesAndRecursiveDirectories(t *testing.T) {
+	root := t.TempDir()
+	for name, data := range map[string]string{
+		"main.go":                     "main",
+		"nested/main.go":              "nested",
+		"root-only.txt":               "root",
+		"nested/root-only.txt":        "nested root",
+		"cache/drop.txt":              "drop",
+		"cache/keep.txt":              "keep",
+		"generated/deep/result.go":    "generated",
+		".gitnexus/csv/interface.csv": "cache",
+		"temporary.tmp":               "temporary",
+		"nested/temporary.tmp":        "nested temporary",
+	} {
+		full := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("# comment\n/cache/\n!cache/keep.txt\n/root-only.txt\n*.tmp\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	provenanceDir := filepath.Join(root, ".ai-provenance")
+	if err := os.MkdirAll(provenanceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(provenanceDir, ".ai-provenanceignore"), []byte("generated/**\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	files, skipped, err := Scan(root, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]string, 0, len(files))
+	for _, file := range files {
+		got = append(got, file.Path)
+	}
+	want := []string{"cache/keep.txt", "main.go", "nested/main.go", "nested/root-only.txt"}
+	if !equalStrings(got, want) {
+		t.Fatalf("files=%v want %v", got, want)
+	}
+	for _, item := range skipped {
+		if item.Path == ".gitnexus/csv/interface.csv" || item.Path == "generated/deep/result.go" {
+			t.Fatalf("directory-pruned file appeared in skipped results: %#v", skipped)
+		}
+	}
+}
+
+func equalStrings(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}

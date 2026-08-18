@@ -48,6 +48,14 @@ func newInitCommand() *cobra.Command {
 		if err = os.MkdirAll(filepath.Join(dir, "snapshots"), 0o755); err != nil {
 			return err
 		}
+		ignorePath := filepath.Join(dir, ".ai-provenanceignore")
+		if _, err = os.Stat(ignorePath); errors.Is(err, os.ErrNotExist) {
+			if err = os.WriteFile(ignorePath, []byte("# ai-prov workspace ignore rules (Git-style subset)\n"), 0o644); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
 		if _, err = config.Load(root); errors.Is(err, config.ErrProjectNotInitialized) {
 			if err = config.Save(root, config.Default()); err != nil {
 				return err

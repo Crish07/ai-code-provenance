@@ -29,8 +29,11 @@ func Scan(root string, maxBytes int64) ([]File, []Skipped, error) {
 	var skipped []Skipped
 	type candidate struct{ path, rel string }
 	var candidates []candidate
-	ignored := loadIgnores(root)
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+	ignored, err := loadIgnores(root)
+	if err != nil {
+		return nil, nil, err
+	}
+	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -42,11 +45,11 @@ func Scan(root string, maxBytes int64) ([]File, []Skipped, error) {
 			return err
 		}
 		rel = filepath.ToSlash(rel)
-		if rel == ".gitignore" || rel == ".ai-provenanceignore" {
+		if rel == ".gitignore" {
 			return nil
 		}
 		if entry.IsDir() {
-			if hiddenDir(rel) {
+			if hiddenDir(rel) || (ignored.ignored(rel, true) && !ignored.mayIncludeDescendant(rel)) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -58,7 +61,7 @@ func Scan(root string, maxBytes int64) ([]File, []Skipped, error) {
 		if !entry.Type().IsRegular() {
 			return nil
 		}
-		if ignored(rel) {
+		if ignored.ignored(rel, false) {
 			skipped = append(skipped, Skipped{rel, "ignored"})
 			return nil
 		}
@@ -133,34 +136,30 @@ func Scan(root string, maxBytes int64) ([]File, []Skipped, error) {
 	return files, skipped, nil
 }
 
-func loadIgnores(root string) func(string) bool {
-	var p []string
-	for _, n := range []string{".gitignore", ".ai-provenanceignore"} {
-		if b, e := os.ReadFile(filepath.Join(root, n)); e == nil {
-			for _, s := range strings.Fields(string(b)) {
-				if !strings.HasPrefix(s, "#") {
-					p = append(p, s)
-				}
-			}
+func loadIgnores(root string) (ignoreMatcher, error) {
+	var combined strings.Builder
+	for _, name := range []string{".gitignore", filepath.Join(".ai-provenance", ".ai-provenanceignore")} {
+		contents, err := os.ReadFile(filepath.Join(root, name))
+		if os.IsNotExist(err) {
+			continue
 		}
-	}
-	return func(path string) bool {
-		for _, s := range p {
-			if ok, _ := filepath.Match(s, path); ok {
-				return true
-			}
-			if ok, _ := filepath.Match(s, filepath.Base(path)); ok {
-				return true
-			}
+		if err != nil {
+			return ignoreMatcher{}, fmt.Errorf("read ignore file %s: %w", name, err)
 		}
-		return false
+		combined.Write(contents)
+		combined.WriteByte('\n')
 	}
+	matcher, err := parseIgnore(combined.String())
+	if err != nil {
+		return ignoreMatcher{}, fmt.Errorf("parse provenance ignore rules: %w", err)
+	}
+	return matcher, nil
 }
 
 func hiddenDir(path string) bool {
 	first := strings.Split(path, "/")[0]
 	switch first {
-	case ".git", ".ai-provenance", ".agents", ".claude", ".codex", ".cursor", ".trae", "node_modules", "vendor", "dist", "build":
+	case ".git", ".ai-provenance", ".agents", ".claude", ".codex", ".cursor", ".trae", ".gitnexus", "node_modules", "vendor", "dist", "build":
 		return true
 	}
 	return false
