@@ -51,12 +51,24 @@ func TestScan_SkipsAgentMetadataDirectories(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	writeDefaultIgnore(t, root)
 	files, _, err := Scan(root, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(files) != 1 || files[0].Path != "main.go" {
 		t.Fatalf("files = %#v, want only main.go", files)
+	}
+}
+
+func writeDefaultIgnore(t *testing.T, root string) {
+	t.Helper()
+	dir := filepath.Join(root, ".ai-provenance")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, ".ai-provenanceignore"), []byte(DefaultIgnoreRules), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -89,7 +101,7 @@ func TestScan_GitStyleIgnoreRulesAndRecursiveDirectories(t *testing.T) {
 	if err := os.MkdirAll(provenanceDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(provenanceDir, ".ai-provenanceignore"), []byte("generated/**\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(provenanceDir, ".ai-provenanceignore"), []byte(DefaultIgnoreRules+"generated/**\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

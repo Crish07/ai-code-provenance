@@ -81,13 +81,22 @@ func TestE2E_InitToStagedVerify_FullCoverage(t *testing.T) {
 	if _, err := os.Stat(ignorePath); err != nil {
 		t.Fatalf("init did not create provenance ignore file: %v", err)
 	}
+	ignoreContents, err := os.ReadFile(ignorePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pattern := range []string{".git/", ".ai-provenance/", ".gitnexus/", "node_modules/", "build/"} {
+		if !strings.Contains(string(ignoreContents), pattern) {
+			t.Fatalf("init ignore rules missing %q: %q", pattern, ignoreContents)
+		}
+	}
 	if err := os.WriteFile(ignorePath, []byte("cache/\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := initCmd.Execute(); err != nil {
 		t.Fatalf("repeat ai-prov init: %v", err)
 	}
-	ignoreContents, err := os.ReadFile(ignorePath)
+	ignoreContents, err = os.ReadFile(ignorePath)
 	if err != nil || string(ignoreContents) != "cache/\n" {
 		t.Fatalf("repeat init changed provenance ignore contents=%q err=%v", ignoreContents, err)
 	}
@@ -162,6 +171,37 @@ func TestE2E_InitToStagedVerify_FullCoverage(t *testing.T) {
 	}
 	if len(got.UncoveredFiles) != 0 {
 		t.Errorf("uncovered_files=%v want empty", got.UncoveredFiles)
+	}
+}
+
+func TestInit_UpgradesLegacyDefaultIgnoreRulesWithoutOverwritingUserRules(t *testing.T) {
+	root := chdirTempRepo(t)
+	provenanceDir := filepath.Join(root, ".ai-provenance")
+	if err := os.MkdirAll(provenanceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ignorePath := filepath.Join(provenanceDir, ".ai-provenanceignore")
+	if err := os.WriteFile(ignorePath, []byte(legacyDefaultIgnoreRules), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := NewRootCommand(BuildInfo{Version: "test"})
+	cmd.SetArgs([]string{"init"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("init legacy project: %v", err)
+	}
+	contents, err := os.ReadFile(ignorePath)
+	if err != nil || !strings.Contains(string(contents), ".gitnexus/\n") {
+		t.Fatalf("legacy ignore was not upgraded: %q err=%v", contents, err)
+	}
+	if err := os.WriteFile(ignorePath, []byte("custom-output/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("repeat init with user rules: %v", err)
+	}
+	contents, err = os.ReadFile(ignorePath)
+	if err != nil || string(contents) != "custom-output/\n" {
+		t.Fatalf("init overwrote user ignore rules: %q err=%v", contents, err)
 	}
 }
 

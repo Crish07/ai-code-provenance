@@ -18,7 +18,7 @@
 
 ## 分析缓存目录
 
-`.gitnexus/` 是 ai-prov 内置跳过的分析缓存目录，不会进入 snapshot 或 finish Diff；不需要为生成或清理其中的缓存创建 provenance session。此例外只适用于该工具缓存，绝不适用于源码、测试、配置或产品文档；不得将业务文件放入该目录以规避 provenance。
+`.gitnexus/` 会作为分析缓存目录写入 `.ai-provenance/.ai-provenanceignore`；请保留该默认规则。规则存在时，其缓存不会进入 snapshot 或 finish Diff，生成或清理其中缓存不需要 provenance session。此例外只适用于该工具缓存，绝不适用于源码、测试、配置或产品文档；不得将业务文件放入该目录以规避 provenance。
 
 ## 必须执行的工作流
 

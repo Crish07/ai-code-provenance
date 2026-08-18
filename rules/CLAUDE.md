@@ -11,7 +11,7 @@ Do not use provenance for OpenSpec-only process work in `openspec/changes/**` or
 
 ## Analysis-cache directory
 
-`.gitnexus/` is an ai-prov internally skipped analysis-cache directory. It never enters a snapshot or finish diff, so generating or cleaning its cache does not require a provenance session. This exception applies only to that tool cache; never place source, tests, configuration, or product documentation there to bypass provenance.
+`.gitnexus/` is seeded into `.ai-provenance/.ai-provenanceignore` as an analysis-cache directory. Keep that default rule: while present, its cache never enters a snapshot or finish diff, so generating or cleaning it does not require a provenance session. This exception applies only to that tool cache; never place source, tests, configuration, or product documentation there to bypass provenance.
 
 ## Workflow
 

@@ -8,6 +8,7 @@ package app
 import (
 	"ai-prov/internal/snapshot"
 	"ai-prov/internal/storage"
+	"ai-prov/internal/workspace"
 	"context"
 	"errors"
 	"os"
@@ -258,6 +259,12 @@ func TestServiceFinish_IgnoresGitNexusCacheBeyondDiffLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(cachePath, []byte(strings.Repeat("generated,row\n", 5_000)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".ai-provenance"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".ai-provenance", ".ai-provenanceignore"), []byte(workspace.DefaultIgnoreRules), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	start, err := svc.Start(context.Background(), StartRequest{Task: "edit code"})
