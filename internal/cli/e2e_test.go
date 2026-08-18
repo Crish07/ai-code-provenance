@@ -18,6 +18,7 @@ import (
 	"ai-prov/internal/config"
 	"ai-prov/internal/provenance"
 	"ai-prov/internal/storage"
+	"ai-prov/internal/workspace"
 )
 
 // chdirTempRepo creates a git repo in a temp dir, chdirs into it, and restores
@@ -85,9 +86,14 @@ func TestE2E_InitToStagedVerify_FullCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, pattern := range []string{".git/", ".ai-provenance/", ".gitnexus/", "node_modules/", "build/"} {
+	for _, pattern := range []string{".git/", ".ai-provenance/"} {
 		if !strings.Contains(string(ignoreContents), pattern) {
 			t.Fatalf("init ignore rules missing %q: %q", pattern, ignoreContents)
+		}
+	}
+	for _, pattern := range []string{".agents/", ".claude/", ".codex/", ".cursor/", ".trae/", ".gitnexus/", "node_modules/", "vendor/", "dist/", "build/"} {
+		if strings.Contains(string(ignoreContents), pattern) {
+			t.Fatalf("init unexpectedly adds opt-in ignore rule %q: %q", pattern, ignoreContents)
 		}
 	}
 	if err := os.WriteFile(ignorePath, []byte("cache/\n"), 0o644); err != nil {
@@ -190,7 +196,7 @@ func TestInit_UpgradesLegacyDefaultIgnoreRulesWithoutOverwritingUserRules(t *tes
 		t.Fatalf("init legacy project: %v", err)
 	}
 	contents, err := os.ReadFile(ignorePath)
-	if err != nil || !strings.Contains(string(contents), ".gitnexus/\n") {
+	if err != nil || string(contents) != workspace.DefaultIgnoreRules {
 		t.Fatalf("legacy ignore was not upgraded: %q err=%v", contents, err)
 	}
 	if err := os.WriteFile(ignorePath, []byte("custom-output/\n"), 0o644); err != nil {

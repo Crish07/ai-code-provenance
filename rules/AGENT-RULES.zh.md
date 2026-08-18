@@ -16,10 +16,6 @@
 - 此例外不适用于源码、测试、构建/部署配置、产品文档，或 OpenSpec 目录以外的任意文件；不得借此跳过代码 provenance。
 - 同一任务同时包含 OpenSpec 流程文件和受追踪代码时，必须先完成 OpenSpec 操作，再 start；start 到 finish 之间不得编辑 OpenSpec 路径。若 finish 后还需归档或更新 tasks，再以 OpenSpec 例外单独完成。
 
-## 分析缓存目录
-
-`.gitnexus/` 会作为分析缓存目录写入 `.ai-provenance/.ai-provenanceignore`；请保留该默认规则。规则存在时，其缓存不会进入 snapshot 或 finish Diff，生成或清理其中缓存不需要 provenance session。此例外只适用于该工具缓存，绝不适用于源码、测试、配置或产品文档；不得将业务文件放入该目录以规避 provenance。
-
 ## 必须执行的工作流
 
 1. 确认项目根目录已由 `ai-prov init` 创建 `.ai-provenance/`。

@@ -264,7 +264,7 @@ func TestServiceFinish_IgnoresGitNexusCacheBeyondDiffLimit(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, ".ai-provenance"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, ".ai-provenance", ".ai-provenanceignore"), []byte(workspace.DefaultIgnoreRules), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, ".ai-provenance", ".ai-provenanceignore"), []byte(workspace.DefaultIgnoreRules+".gitnexus/\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	start, err := svc.Start(context.Background(), StartRequest{Task: "edit code"})

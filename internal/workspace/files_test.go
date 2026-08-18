@@ -40,7 +40,7 @@ func TestScan_FiltersAndSortsFiles(t *testing.T) {
 	}
 }
 
-func TestScan_SkipsAgentMetadataDirectories(t *testing.T) {
+func TestScan_IncludesAgentMetadataDirectoriesUnlessExplicitlyIgnored(t *testing.T) {
 	root := t.TempDir()
 	for _, path := range []string{"main.go", ".agents/docs/guide.md", ".trae/rules/ai-prov.md"} {
 		full := filepath.Join(root, path)
@@ -56,8 +56,13 @@ func TestScan_SkipsAgentMetadataDirectories(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(files) != 1 || files[0].Path != "main.go" {
-		t.Fatalf("files = %#v, want only main.go", files)
+	got := make([]string, 0, len(files))
+	for _, file := range files {
+		got = append(got, file.Path)
+	}
+	want := []string{".agents/docs/guide.md", ".trae/rules/ai-prov.md", "main.go"}
+	if !equalStrings(got, want) {
+		t.Fatalf("files = %v, want %v", got, want)
 	}
 }
 
@@ -101,7 +106,7 @@ func TestScan_GitStyleIgnoreRulesAndRecursiveDirectories(t *testing.T) {
 	if err := os.MkdirAll(provenanceDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(provenanceDir, ".ai-provenanceignore"), []byte(DefaultIgnoreRules+"generated/**\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(provenanceDir, ".ai-provenanceignore"), []byte(DefaultIgnoreRules+".gitnexus/\ngenerated/**\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 

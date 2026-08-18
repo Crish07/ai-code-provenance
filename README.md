@@ -90,7 +90,7 @@ By default, the hook adds `[AI:<n>%]` to the commit subject and appends `AI-Line
 
 ### Workspace ignore rules
 
-`session_start` and `session_finish` read both the existing root `.gitignore` and `.ai-provenance/.ai-provenanceignore`. They use a line-oriented, last-match-wins Git-style subset: blank lines, `#` comments, `!` negation, `*`, `?`, `[]`, `**`, root-relative paths, and recursive directory rules ending in `/` are supported. `init` seeds the dedicated file with these directory rules: `.git/`, `.ai-provenance/`, `.agents/`, `.claude/`, `.codex/`, `.cursor/`, `.trae/`, `.gitnexus/`, `node_modules/`, `vendor/`, `dist/`, and `build/`.
+`session_start` and `session_finish` read both the existing root `.gitignore` and `.ai-provenance/.ai-provenanceignore`. They use a line-oriented, last-match-wins Git-style subset: blank lines, `#` comments, `!` negation, `*`, `?`, `[]`, `**`, root-relative paths, and recursive directory rules ending in `/` are supported. `init` seeds the dedicated file with only `.git/` and `.ai-provenance/`.
 
 For example, this rule prevents all GitNexus analysis cache files from entering a snapshot or finish diff:
 
@@ -98,7 +98,7 @@ For example, this rule prevents all GitNexus analysis cache files from entering 
 .gitnexus/
 ```
 
-The dedicated file is the primary home for these defaults and project-specific additions; retain cache and dependency rules such as `.gitnexus/` and `node_modules/`. `.git/` and `.ai-provenance/` remain non-overridable safety boundaries even if removed from the file. Use dedicated rules only for non-product content such as caches and build outputs; never exclude source, tests, configuration, or product documentation to bypass provenance. Nested `.gitignore` files, Git attributes, and escaped trailing-space semantics are not implemented.
+The dedicated file is the primary home for project-specific additions: add cache and dependency rules such as `.gitnexus/` and `node_modules/` when your project needs them. `.git/` and `.ai-provenance/` remain non-overridable safety boundaries even if removed from the file. Use dedicated rules only for non-product content such as caches and build outputs; never exclude source, tests, configuration, or product documentation to bypass provenance. Nested `.gitignore` files, Git attributes, and escaped trailing-space semantics are not implemented.
 
 ## What coverage means
 

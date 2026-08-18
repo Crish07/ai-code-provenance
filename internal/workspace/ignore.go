@@ -12,23 +12,13 @@ import (
 )
 
 // DefaultIgnoreRules seeds each new project's ai-prov-specific ignore file.
-// The scanner treats these as ordinary rules after init, so users can extend
-// them for generated content in their own project. .git and .ai-provenance
+// The scanner treats these as ordinary rules after init, so users can add
+// project-specific generated content themselves. .git and .ai-provenance
 // remain protected separately even if a user removes their visible entries.
 const DefaultIgnoreRules = `# ai-prov workspace ignore rules
 # Add project-local generated files or directories below.
 .git/
 .ai-provenance/
-.agents/
-.claude/
-.codex/
-.cursor/
-.trae/
-.gitnexus/
-node_modules/
-vendor/
-dist/
-build/
 `
 
 // ignoreMatcher implements the project-root subset of Git's ignore syntax

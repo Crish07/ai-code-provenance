@@ -90,7 +90,7 @@ ai-prov hook install
 
 ### 工作区忽略规则
 
-`session_start` 与 `session_finish` 同时读取项目根目录现有的 `.gitignore`，以及 `.ai-provenance/.ai-provenanceignore`。两者使用按行、后匹配优先的 Git 风格规则子集：支持空行、`#` 注释、`!` 反向规则、`*`、`?`、`[]`、`**`、根目录相对路径，以及以 `/` 结尾的递归目录规则。后者由 `init` 自动写入以下默认目录规则：`.git/`、`.ai-provenance/`、`.agents/`、`.claude/`、`.codex/`、`.cursor/`、`.trae/`、`.gitnexus/`、`node_modules/`、`vendor/`、`dist/`、`build/`。
+`session_start` 与 `session_finish` 同时读取项目根目录现有的 `.gitignore`，以及 `.ai-provenance/.ai-provenanceignore`。两者使用按行、后匹配优先的 Git 风格规则子集：支持空行、`#` 注释、`!` 反向规则、`*`、`?`、`[]`、`**`、根目录相对路径，以及以 `/` 结尾的递归目录规则。`init` 仅自动写入 `.git/` 与 `.ai-provenance/` 两条默认目录规则。
 
 例如，下面的规则会使 `.gitnexus` 的全部分析缓存不参与 snapshot 或 finish Diff：
 
@@ -98,7 +98,7 @@ ai-prov hook install
 .gitnexus/
 ```
 
-默认规则以 `.ai-provenance/.ai-provenanceignore` 为主，可按项目扩展；请保留 `.gitnexus/`、`node_modules/` 等缓存/依赖规则。`.git/` 与 `.ai-provenance/` 即使被从文件移除，仍是不可取消的安全边界。专用规则只应用于缓存、构建产物等非业务内容；不得用它排除源码、测试、配置或产品文档来规避 provenance。当前不读取嵌套 `.gitignore`、Git attributes，也不实现转义尾随空格语义。
+`.ai-provenance/.ai-provenanceignore` 用于按项目扩展：需要时请由用户自行加入 `.gitnexus/`、`node_modules/` 等缓存/依赖规则。`.git/` 与 `.ai-provenance/` 即使被从文件移除，仍是不可取消的安全边界。专用规则只应用于缓存、构建产物等非业务内容；不得用它排除源码、测试、配置或产品文档来规避 provenance。当前不读取嵌套 `.gitignore`、Git attributes，也不实现转义尾随空格语义。
 
 ## 覆盖率代表什么
 

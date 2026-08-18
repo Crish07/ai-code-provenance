@@ -6,10 +6,6 @@ All tracked source-code changes MUST be recorded through ai-prov MCP.
 
 Do not use provenance for OpenSpec-only process work in `openspec/changes/**` or `openspec/specs/**` (including proposal, design, tasks, change specs, and archive operations). This never covers source, tests, configuration, product documentation, or files outside those paths. For mixed work, complete OpenSpec operations before start and do not edit OpenSpec files between start and finish.
 
-## Analysis-cache directory
-
-`.gitnexus/` is seeded into `.ai-provenance/.ai-provenanceignore` as an analysis-cache directory. Keep that default rule: while present, its cache never enters a snapshot or finish diff, so generating or cleaning it does not require a provenance session. This exception applies only to that tool cache; never place source, tests, configuration, or product documentation there to bypass provenance.
-
 - Before editing, call provenance.session_start successfully.
 - Before reporting completion, call provenance.session_finish successfully and
   require state equal to finished.
