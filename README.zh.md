@@ -1,56 +1,114 @@
 # ai-code-provenance
 
-面向 MCP Coding Agent 的本地 AI 代码来源追踪工具。ai-prov 在本地记录 AI session、计算真实工作区变更，并为 Git 新增行计算**AI 来源覆盖率**；不会上传源码、Diff 或项目文件。
+[![CI](https://github.com/Crish07/ai-code-provenance/actions/workflows/ci.yml/badge.svg)](https://github.com/Crish07/ai-code-provenance/actions/workflows/ci.yml)
+[![Release](https://github.com/Crish07/ai-code-provenance/actions/workflows/release.yml/badge.svg)](https://github.com/Crish07/ai-code-provenance/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[代码仓库](https://github.com/Crish07/ai-code-provenance)
+> 为 MCP Coding Agent 提供本地、可审计的 AI 代码来源记录。
 
-[English README](README.md)
+ai-prov 在 Agent 编辑前建立工作区基线，在完成时计算真实变更，并为 Git 新增有效行计算 **AI 来源覆盖率**。源码、Diff、snapshot 和 SQLite 数据始终留在本地，不会由 ai-prov 上传。
 
-## 安装与初始化
+[代码仓库](https://github.com/Crish07/ai-code-provenance) · [下载 Release](https://github.com/Crish07/ai-code-provenance/releases) · [提交 Issue](https://github.com/Crish07/ai-code-provenance/issues) · [English](README.md)
 
-下载对应 Release 并校验 `SHA256SUMS.txt` 后，解压并进入解压目录，使用其中的 `ai-prov` 执行：
+**快速导航：** [为什么使用](#为什么使用) · [工作方式](#工作方式) · [60 秒开始](#60-秒开始) · [命令参考](#cli-完整命令参考) · [参与贡献](#参与贡献) · [安全报告](#安全报告)
+
+## 为什么使用
+
+- **将 Agent 的改动变成可核对的本地记录**：一个 session 对应一次明确的编辑基线与结束记录。
+- **看见 Git 新增行的覆盖率**：`verify` 与 `report` 将本地 provenance 和 staged/worktree Git diff 对照。
+- **默认不上传项目数据**：provenance、快照和数据库保存在 `.ai-provenance/`，应保持 Git ignore。
+- **接入已有工作流**：提供 stdio MCP、可复制的 Agent Rules、可选 Git `commit-msg` hook，以及 macOS/Linux/Windows Release 包。
+
+## 工作方式
+
+```mermaid
+flowchart LR
+    A[Agent] -->|session_start| B[本地基线 snapshot]
+    B --> C[编辑工作区]
+    C -->|session_finish| D[本地行级 provenance]
+    D -->|verify / report| E[Git 新增行 AI 覆盖率]
+    E -->|可选 hook| F[Git 提交信息]
+```
+
+只有成功完成的 session 才会写入 provenance。未记录、人工修改后无法继承或 session 失败的行，都不会被标记为 AI。
+
+## 60 秒开始
+
+### 1. 安装
+
+从 [Release](https://github.com/Crish07/ai-code-provenance/releases) 下载对应系统和架构的压缩包，校验 `SHA256SUMS.txt`，解压后进入目录：
 
 ```sh
 # macOS / Linux
 ./ai-prov install
-# 切换到工作目录新开终端后：
-ai-prov init
 ```
 
 ```powershell
 # Windows PowerShell
+# Windows 默认可能没有 HOME；当前版本安装前为本次 PowerShell 会话设置它。
+if (-not $env:HOME) {
+  $env:HOME = $env:USERPROFILE
+}
 .\ai-prov.exe install
-# 切换到工作目录新开终端后：
-ai-prov init
 ```
 
-`install` 仅为当前用户复制 `ai-prov`、`ai-prov-mcp` 并添加 ai-prov 自有 PATH 项；`uninstall` 仅删除安装收据中、hash 仍匹配的文件。它绝不会删除项目 `.ai-provenance`、MCP 配置、Rules 或 Git hook。PATH 变更后请新开终端；安装完成后可用 `ai-prov install --dry-run` 或 `ai-prov uninstall --dry-run` 预览对应操作。
+> Windows 安装排错：若 `install` 提示 `home directory is required`，请先执行上面的 `HOME` 设置再重试。这只影响当前 PowerShell 会话，不会修改系统或用户环境变量；同时请确认 `LOCALAPPDATA` 已设置。安装完成后，若新终端中的 `ai-prov` 仍未被识别，可先使用完整路径验证：
+>
+> ```powershell
+> $exe = Join-Path $env:LOCALAPPDATA 'Programs\ai-prov\ai-prov.exe'
+> & $exe init
+> ```
 
-每个被追踪项目只需执行一次：
+`install` 仅为当前用户复制 `ai-prov`、`ai-prov-mcp` 并添加 ai-prov 自有 PATH 项。PATH 变更后请新开终端。
+
+### 2. 初始化项目
 
 ```sh
+cd <你的 Git 项目>
 ai-prov init
 ```
 
-项目状态存于 `.ai-provenance`，请在被追踪项目中忽略该目录。
+项目状态存于 `.ai-provenance/`，请在项目 `.gitignore` 中忽略该目录。`init` 还会在其中创建 `.ai-provenance/.ai-provenanceignore`；这是 ai-prov 专用的工作区忽略规则文件，不会在项目根目录新增文件。
 
-## MCP 与 Rules
+### 3. 接入 Agent
 
-将 `ai-prov-mcp` 配置为本地 stdio MCP server，再将 Release 中的一份 Rules 模板复制到 Agent **实际自动加载**的位置。Release 的 `rules/` 只是模板来源，不代表 Host 会自动加载。
+将 `ai-prov-mcp` 配置为本地 stdio MCP server，并从 Release `rules/` 中选择与你的 Agent 对应的模板复制到其实际自动加载的位置。不同 Host 的 MCP 配置格式不同，因此请按 [Rules 配置说明](rules/README.zh.md) 操作，不要猜测配置字段。
 
-详见 [Rules 配置说明](rules/README.zh.md)。
+Agent 每次任务应遵循：`session_recover → session_start → 编辑 → session_finish`。上下文压缩后用保存的 `agent_instance_id` 执行 `session_recover`，不要猜测 session ID。
 
-## Agent 每个任务的流程
+### 4. 验证或写入提交信息（可选）
 
-1. 为 Agent 实例生成并持久化一个 UUID `agent_instance_id`。
-2. 编辑前调用 `provenance.session_start`，持久化返回的 `session_id` 和 `agent_instance_id`。
-3. 长任务期间使用两个 ID 调用 `provenance.session_heartbeat`。
-4. 完成时用两个 ID 调用 `provenance.session_finish`，必须得到 `finished`。
-5. 提交前可运行 `ai-prov verify --scope staged --strict`。
+```sh
+# 查看暂存区新增行的 AI 来源覆盖率
+ai-prov verify --scope staged --strict
 
-上下文压缩丢失 session ID 后，使用已保存的实例 ID 调用 `provenance.session_recover`，不得猜测候选。超过 heartbeat 租约的 session 会变为 `failed / SESSION_LEASE_EXPIRED`，应新建 session，不能 finish。
+# 为当前 Git 项目安装提交信息 hook
+ai-prov hook install
+```
 
-AI 来源覆盖率只表示 staged/worktree 新增有效行中匹配已完成 AI provenance 的比例；它不表示 token、费用、对话轮数、耗时，也不区分人机混编。
+默认 hook 会在提交标题加入 `[AI:<n>%]`，并在消息末尾追加 `AI-Lines`、`AI-Agent`。它只管理自己写入的内容，遇到其他工具的 hook 时会拒绝直接覆盖。
+
+### 工作区忽略规则
+
+`session_start` 与 `session_finish` 同时读取项目根目录现有的 `.gitignore`，以及 `.ai-provenance/.ai-provenanceignore`。两者使用按行、后匹配优先的 Git 风格规则子集：支持空行、`#` 注释、`!` 反向规则、`*`、`?`、`[]`、`**`、根目录相对路径，以及以 `/` 结尾的递归目录规则。
+
+例如，下面的规则会使 `.gitnexus` 的全部分析缓存不参与 snapshot 或 finish Diff：
+
+```gitignore
+.gitnexus/
+```
+
+`.gitnexus/` 也已是内置跳过目录。专用规则只应用于缓存、构建产物等非业务内容；不得用它排除源码、测试、配置或产品文档来规避 provenance。当前不读取嵌套 `.gitignore`、Git attributes，也不实现转义尾随空格语义。
+
+## 覆盖率代表什么
+
+AI 来源覆盖率只表示 staged/worktree **新增有效行**中，匹配已完成 AI provenance 的比例。它不表示 token、费用、对话轮数、耗时、作者身份，也不是完整行身份验证。
+
+```text
+新增有效行：5
+已匹配 AI provenance：5
+AI 来源覆盖率：100%
+```
 
 ## CLI 完整命令参考
 
@@ -58,12 +116,12 @@ AI 来源覆盖率只表示 staged/worktree 新增有效行中匹配已完成 AI
 
 ### 初始化、状态与版本
 
-| 命令                                       | 用途与备注                                                                                              |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `ai-prov init`                             | 初始化当前项目的 `.ai-provenance/`、默认配置、SQLite 数据库及 snapshot 目录。可重复执行；不会上传代码。 |
-| `ai-prov status`                           | 输出项目绝对路径，以及 `active`、`finished`、`failed` 三种 session 的计数。适合先确认项目是否可用。     |
-| `ai-prov version`                          | 输出当前 CLI 的版本、commit 和构建时间；排查“Rules、MCP 与二进制是否同一版本”时应首先执行。             |
-| `ai-prov --help` / `ai-prov <命令> --help` | 列出命令或子命令及其 flags；这是判断本机实际可用能力的权威入口。                                        |
+| 命令                                       | 用途与备注                                                                                                                                            |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ai-prov init`                             | 初始化当前项目的 `.ai-provenance/`、默认配置、SQLite 数据库、snapshot 目录及专用 `.ai-provenanceignore`。可重复执行；不会上传代码或覆盖已有忽略规则。 |
+| `ai-prov status`                           | 输出项目绝对路径，以及 `active`、`finished`、`failed` 三种 session 的计数。适合先确认项目是否可用。                                                   |
+| `ai-prov version`                          | 输出当前 CLI 的版本、commit 和构建时间；排查“Rules、MCP 与二进制是否同一版本”时应首先执行。                                                           |
+| `ai-prov --help` / `ai-prov <命令> --help` | 列出命令或子命令及其 flags；这是判断本机实际可用能力的权威入口。                                                                                      |
 
 ### Session 与 snapshot 管理
 
@@ -76,7 +134,7 @@ AI 来源覆盖率只表示 staged/worktree 新增有效行中匹配已完成 AI
 | `ai-prov snapshots gc --json`            | 将 GC 预览/执行结果序列化为 JSON。                                                                                                    |
 | `ai-prov snapshots gc --apply`           | 按当前候选集实际删除终态 snapshot/object，属于破坏性操作；应先运行不带 `--apply` 的命令核对范围。可与 `--older-than`、`--json` 组合。 |
 
-lease 过期的 snapshot 仅在项目显式启用 `auto_reclaim_expired_sessions: true` 后，才会在宽限期结束时自动进入回收流程；普通 CLI GC 始终默认 dry-run。
+自动回收策略：每个项目每天首次 `session_start` 会检查一次可回收的 snapshot。已结束的 session snapshot 默认保留 7 天；因 session lease 过期而失败的 snapshot 也在失败满 7 天后可回收。active session 的 snapshot 不会被自动删除。默认 session lease 为 24 小时，适合隔夜恢复；正常任务不需要 heartbeat。普通 CLI GC 始终默认 dry-run，可用于预览或提前手动回收。
 
 ### 覆盖率校验与 report 序列化输出
 
@@ -199,6 +257,14 @@ AI-Agent: codex
 | `provenance.session_status`    | 不读取源码地查询状态。                  |
 | `provenance.verify`            | 校验新增行覆盖率。                      |
 | `provenance.support`           | 返回仓库与问题反馈地址。                |
+
+## 参与贡献
+
+提交 Pull Request 前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。仓库已包含 CI、Pull Request 模板、CODEOWNERS 审核和可复现 Bug 的 Issue 模板。
+
+## 安全报告
+
+报告漏洞前请阅读 [SECURITY.md](SECURITY.md)。请勿在公开 Issue 或 Pull Request 中附上密钥、源码 snapshot、provenance 数据、数据库或私有项目路径。
 
 ## 开发
 

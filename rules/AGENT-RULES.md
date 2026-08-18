@@ -2,19 +2,31 @@
 
 ## Mandatory protocol
 
-All tracked source-code changes **MUST** be recorded through ai-prov MCP. The following rules are non-skippable prerequisites and take priority over quick edits, one-line fixes, user requests for immediate changes, empty diffs, or any other convenience.
+All tracked source-code changes **MUST** be recorded through ai-prov MCP. The following rules are non-skippable prerequisites and take priority over quick edits, one-line fixes, user requests for immediate changes, empty diffs, or any other convenience, except for the OpenSpec process-file exception below.
 
 1. **Call before editing.** Before creating, modifying, deleting, renaming, or using a terminal command that affects any tracked file, successfully call `provenance.session_start`.
 2. **Call before completion.** Before claiming that work is complete, sending a final response, requesting user acceptance, or suggesting a commit, successfully call `provenance.session_finish` and confirm that `state` is exactly `finished`.
 3. **Failure means incomplete.** If either call fails, is cancelled, times out, or returns an error, the task is incomplete. Stop further edits and completion claims, and report the error to the user. Do not claim success, assume a call succeeded, or replace the call with a later manual explanation.
+
+## OpenSpec process-file exception
+
+Process documents created, updated, or archived by `openspec` are outside code-provenance scope: `openspec/changes/**` (including `proposal.md`, `design.md`, `tasks.md`, change-local `specs/**`, and `archive/**`) and `openspec/specs/**`.
+
+- When work only edits those OpenSpec process files or runs `openspec new`, `openspec instructions`, or `openspec archive`, do **not** call `provenance.session_recover`, `provenance.session_start`, `provenance.session_finish`, or heartbeat for that work.
+- This exception never applies to source code, tests, build/deployment configuration, product documentation, or any file outside the OpenSpec paths; it must not be used to bypass code provenance.
+- For mixed work, finish all OpenSpec operations before start, and do not edit OpenSpec paths between start and finish. If archiving or task updates remain after finish, perform them separately under this exception.
+
+## Analysis-cache directory
+
+`.gitnexus/` is an ai-prov internally skipped analysis-cache directory. It never enters a snapshot or finish diff, so generating or cleaning its cache does not require a provenance session. This exception applies only to that tool cache; source, tests, configuration, and product documentation must never be placed there to bypass provenance.
 
 ## Required workflow
 
 1. Confirm that `ai-prov init` has created `.ai-provenance/` in the project root.
 2. Generate one UUID `agent_instance_id` for this Agent instance. Call `provenance.session_start` with a concise, accurate `task` and that ID; provide `agent` and `model` when available.
 3. Persist the returned `session_id` **and** `agent_instance_id`. Until a valid `session_id` is obtained, do not use an editor, patch, workspace-edit, file-write, rename, delete, or any shell command that can modify files.
-4. Write the returned `session_id` and `agent_instance_id` into durable task state that survives context compaction. Modify code or documentation only after start succeeds.
-5. During long-running work, periodically call `provenance.session_heartbeat` with the persisted `session_id` and `agent_instance_id`. Call `provenance.session_finish` with both values when work is complete. Finish is required even when no files changed or the diff is empty.
+4. Write the returned `session_id` and `agent_instance_id` into durable task state that survives context compaction. Modify tracked code or documentation only after start succeeds; OpenSpec process files follow the exception above.
+5. Before calling `provenance.session_start`, call `provenance.session_recover`; if it returns exactly one active session, reuse both IDs. Normal work must not be interrupted or extended for a heartbeat. Use `provenance.session_heartbeat` only for work exceeding 24 hours when the host can run it independently. Call `provenance.session_finish` with both values when work is complete. Finish is required even when no files changed or the diff is empty.
 6. Before committing, optionally call `provenance.verify` with `scope: "staged"` and `strict: true`.
 
 Only the complete tool names `provenance.session_start`, `provenance.session_finish`, `provenance.session_status`, `provenance.verify`, `provenance.support`, `provenance.session_recover`, `provenance.session_heartbeat`, and `provenance.session_abandon` are valid. Do not invent, abbreviate, or substitute other names.

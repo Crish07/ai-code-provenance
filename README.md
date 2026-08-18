@@ -1,56 +1,114 @@
 # ai-code-provenance
 
-Local AI code provenance for MCP-enabled coding agents. ai-prov records declared local AI sessions, computes workspace changes, and reports **AI source coverage** for added Git lines. It never uploads source code, diffs, or project files.
+[![CI](https://github.com/Crish07/ai-code-provenance/actions/workflows/ci.yml/badge.svg)](https://github.com/Crish07/ai-code-provenance/actions/workflows/ci.yml)
+[![Release](https://github.com/Crish07/ai-code-provenance/actions/workflows/release.yml/badge.svg)](https://github.com/Crish07/ai-code-provenance/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-[Repository](https://github.com/Crish07/ai-code-provenance)
+> Local, auditable AI code provenance for MCP coding agents.
 
-[中文说明](README.zh.md)
+ai-prov captures a workspace baseline before an Agent edits, computes the real changes when it finishes, and reports **AI source coverage** for added effective Git lines. Source code, diffs, snapshots, and SQLite data stay local; ai-prov does not upload them.
 
-## Install and initialize
+[Repository](https://github.com/Crish07/ai-code-provenance) · [Releases](https://github.com/Crish07/ai-code-provenance/releases) · [Issues](https://github.com/Crish07/ai-code-provenance/issues) · [中文说明](README.zh.md)
 
-Download the matching Release archive and verify `SHA256SUMS.txt`. Extract it, change into the extracted directory, and run the release `ai-prov` binary once to install both release binaries for the current user:
+**Quick navigation:** [Why ai-prov](#why-ai-prov) · [How it works](#how-it-works) · [Start in 60 seconds](#start-in-60-seconds) · [CLI reference](#complete-cli-reference) · [Contributing](#contributing) · [Security](#security)
+
+## Why ai-prov
+
+- **Turn Agent work into inspectable local records.** A session has an explicit edit baseline and completion record.
+- **See coverage for added Git lines.** `verify` and `report` compare local provenance with staged or worktree Git diffs.
+- **Keep project data local by default.** Provenance, snapshots, and the database live in `.ai-provenance/`, which should remain Git-ignored.
+- **Fit into existing workflows.** Use the stdio MCP server, copyable Agent Rules, an optional Git `commit-msg` hook, and macOS/Linux/Windows Release archives.
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[Agent] -->|session_start| B[Local snapshot baseline]
+    B --> C[Edit workspace]
+    C -->|session_finish| D[Local line provenance]
+    D -->|verify / report| E[AI coverage for added Git lines]
+    E -->|optional hook| F[Git commit message]
+```
+
+Only a successfully finished session writes provenance. Unrecorded lines, edits whose source cannot be carried forward, and failed sessions are never labelled as AI.
+
+## Start in 60 seconds
+
+### 1. Install
+
+Download the archive for your operating system and architecture from [Releases](https://github.com/Crish07/ai-code-provenance/releases), verify `SHA256SUMS.txt`, extract it, and enter the extracted directory:
 
 ```sh
 # macOS / Linux
 ./ai-prov install
-# Open a new terminal in the working directory, then:
-ai-prov init
 ```
 
 ```powershell
 # Windows PowerShell
+# Windows does not always define HOME; set it for this PowerShell session before installing.
+if (-not $env:HOME) {
+  $env:HOME = $env:USERPROFILE
+}
 .\ai-prov.exe install
-# Open a new terminal in the working directory, then:
-ai-prov init
 ```
 
-`install` copies `ai-prov` and `ai-prov-mcp`, records their SHA-256 values, and adds only an ai-prov-owned user PATH entry. `uninstall` removes only receipt-listed files whose hash still matches; it never deletes `.ai-provenance`, MCP configuration, Rules, or Git hooks. Open a new terminal after PATH changes. Use `ai-prov install --dry-run` or `ai-prov uninstall --dry-run` after installation to preview those operations.
+> Windows installation troubleshooting: if `install` reports `home directory is required`, run the `HOME` setup above and retry. It affects only the current PowerShell session and does not change system or user environment variables. Also ensure that `LOCALAPPDATA` is defined. If `ai-prov` is still not recognised in a new terminal after installation, verify it with its full path first:
+>
+> ```powershell
+> $exe = Join-Path $env:LOCALAPPDATA 'Programs\ai-prov\ai-prov.exe'
+> & $exe init
+> ```
 
-In each tracked project:
+`install` copies `ai-prov` and `ai-prov-mcp` for the current user and adds only an ai-prov-owned PATH entry. Open a new terminal after PATH changes.
+
+### 2. Initialize a project
 
 ```sh
+cd <your Git project>
 ai-prov init
 ```
 
-All project-local state is stored in `.ai-provenance`; ignore that directory in the tracked project.
+All project-local state is stored in `.ai-provenance/`; ignore that directory in the project `.gitignore`. `init` also creates `.ai-provenance/.ai-provenanceignore`, the ai-prov-specific workspace-ignore file, so no extra file is added at the project root.
 
-## Configure MCP and Rules
+### 3. Connect your Agent
 
-Configure `ai-prov-mcp` as a local stdio MCP server, then copy one release Rules template into the location your Agent actually auto-loads. The release `rules/` directory is a template source, not an automatic instruction location.
+Configure `ai-prov-mcp` as a local stdio MCP server, then copy the template for your Agent from the Release `rules/` directory into the location that Agent actually loads. MCP configuration formats differ by Host, so follow the [Rules setup guide](rules/README.md) instead of guessing configuration fields.
 
-See [Rules configuration](rules/README.md) or [中文配置](rules/README.zh.md). It contains host configuration examples and a verification checklist.
+For each task, the Agent should follow: `session_recover → session_start → edit → session_finish`. After context compaction, recover with the persisted `agent_instance_id`; never guess a session ID.
 
-## Agent workflow
+### 4. Verify or add commit metadata (optional)
 
-1. Generate and persist one `agent_instance_id` UUID for the Agent instance.
-2. Call `provenance.session_start` before edits; persist its `session_id` and returned `agent_instance_id` across context compaction.
-3. For long tasks, call `provenance.session_heartbeat` with both IDs.
-4. Call `provenance.session_finish` with both IDs and require `finished`.
-5. Optionally run `ai-prov verify --scope staged --strict` before committing.
+```sh
+# Check AI source coverage for staged added lines.
+ai-prov verify --scope staged --strict
 
-After lost context, call `provenance.session_recover` with the persisted instance ID. Do not guess candidates. A session past its heartbeat lease becomes `failed / SESSION_LEASE_EXPIRED`; create a new session instead of finishing it.
+# Install the commit-message hook in the current Git project.
+ai-prov hook install
+```
 
-AI source coverage is only the proportion of added staged/worktree lines that match completed AI provenance. It is not token usage, model cost, conversation turns, elapsed time, or human/AI mixed-authorship detection.
+By default, the hook adds `[AI:<n>%]` to the commit subject and appends `AI-Lines` and `AI-Agent`. It manages only its own content and refuses to overwrite another tool's hook directly.
+
+### Workspace ignore rules
+
+`session_start` and `session_finish` read both the existing root `.gitignore` and `.ai-provenance/.ai-provenanceignore`. They use a line-oriented, last-match-wins Git-style subset: blank lines, `#` comments, `!` negation, `*`, `?`, `[]`, `**`, root-relative paths, and recursive directory rules ending in `/` are supported.
+
+For example, this rule prevents all GitNexus analysis cache files from entering a snapshot or finish diff:
+
+```gitignore
+.gitnexus/
+```
+
+`.gitnexus/` is also an internally skipped directory. Use the dedicated file only for non-product content such as caches and build outputs; never exclude source, tests, configuration, or product documentation to bypass provenance. Nested `.gitignore` files, Git attributes, and escaped trailing-space semantics are not implemented.
+
+## What coverage means
+
+AI source coverage is only the proportion of **added effective staged/worktree lines** that match completed AI provenance. It is not token, cost, conversation-turn, duration, authorship, or complete line-identity verification.
+
+```text
+Added effective lines: 5
+Lines matching AI provenance: 5
+AI source coverage: 100%
+```
 
 ## Complete CLI reference
 
@@ -58,12 +116,12 @@ Except for `install`, `uninstall`, `version`, and `completion`, project commands
 
 ### Initialization, status, and version
 
-| Command                                       | Purpose and notes                                                                                                                                                             |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ai-prov init`                                | Initializes `.ai-provenance/`, default configuration, the SQLite database, and the snapshot directory in the current project. It is safe to run again and never uploads code. |
-| `ai-prov status`                              | Prints the absolute project path and counts of `active`, `finished`, and `failed` sessions. Use it to confirm the project is usable.                                          |
-| `ai-prov version`                             | Prints the CLI version, commit, and build time. Run it first when checking that Rules, MCP, and binaries are from the same version.                                           |
-| `ai-prov --help` / `ai-prov <command> --help` | Lists commands or subcommands and their flags; this is the authoritative entry point for discovering capabilities actually available locally.                                 |
+| Command                                       | Purpose and notes                                                                                                                                                                                                                            |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ai-prov init`                                | Initializes `.ai-provenance/`, default configuration, the SQLite database, the snapshot directory, and the dedicated `.ai-provenanceignore` file. It is safe to run again, never uploads code, and does not overwrite existing ignore rules. |
+| `ai-prov status`                              | Prints the absolute project path and counts of `active`, `finished`, and `failed` sessions. Use it to confirm the project is usable.                                                                                                         |
+| `ai-prov version`                             | Prints the CLI version, commit, and build time. Run it first when checking that Rules, MCP, and binaries are from the same version.                                                                                                          |
+| `ai-prov --help` / `ai-prov <command> --help` | Lists commands or subcommands and their flags; this is the authoritative entry point for discovering capabilities actually available locally.                                                                                                |
 
 ### Session and snapshot management
 
@@ -76,7 +134,7 @@ Except for `install`, `uninstall`, `version`, and `completion`, project commands
 | `ai-prov snapshots gc --json`            | Serializes the GC preview or apply result as JSON.                                                                                                                                                                    |
 | `ai-prov snapshots gc --apply`           | Deletes terminal snapshot/object candidates selected by the current criteria. This is destructive: first run the command without `--apply` and review the scope. It can be combined with `--older-than` and `--json`. |
 
-Lease-expired snapshots enter automatic reclamation only after the project explicitly enables `auto_reclaim_expired_sessions: true` and the grace period has elapsed. Normal CLI GC always defaults to dry-run.
+Automatic reclaim policy: the first `session_start` for each project each day checks reclaimable snapshots. Snapshots for completed sessions are retained for seven days by default; snapshots for sessions that failed because their lease expired also become reclaimable after seven days. Snapshots of active sessions are never automatically deleted. The default session lease is 24 hours for overnight recovery, and normal tasks do not need heartbeats. Normal CLI GC always defaults to dry-run and can be used to preview or reclaim earlier manually.
 
 ### Coverage verification and serialized report output
 
@@ -199,6 +257,14 @@ Use `ai-prov hook install --trailer-only` to leave the subject unchanged and wri
 | `provenance.session_status`    | Read persisted state without source access.                     |
 | `provenance.verify`            | Verify staged/worktree added-line coverage.                     |
 | `provenance.support`           | Return repository and issue-report URL.                         |
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. The repository includes CI, a pull-request template, CODEOWNERS review, and an Issue template for reproducible bugs.
+
+## Security
+
+Read [SECURITY.md](SECURITY.md) before reporting a vulnerability. Do not post secrets, source snapshots, provenance data, databases, or private project paths in public Issues or pull requests.
 
 ## Development
 

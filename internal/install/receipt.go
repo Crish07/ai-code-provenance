@@ -55,8 +55,9 @@ func DefaultLayout(env Environment) (Layout, error) {
 		if env.LocalAppData == "" {
 			return Layout{}, fmt.Errorf("%w: LOCALAPPDATA is required on windows", ErrInvalidReceipt)
 		}
-		root = path.Join(env.LocalAppData, "Programs", "ai-prov")
-		receipt = path.Join(env.LocalAppData, "ai-prov", "install-receipt.json")
+		localAppData := windowsReceiptPath(env.LocalAppData)
+		root = path.Join(localAppData, "Programs", "ai-prov")
+		receipt = path.Join(localAppData, "ai-prov", "install-receipt.json")
 	default:
 		return Layout{}, fmt.Errorf("%w: unsupported platform %q", ErrInvalidReceipt, env.GOOS)
 	}
@@ -69,6 +70,14 @@ func DefaultLayout(env Environment) (Layout, error) {
 		{Name: "ai-prov-mcp", Path: path.Join(root, "ai-prov-mcp"+ext)},
 	}}
 	return layout, layout.Validate()
+}
+
+// windowsReceiptPath canonicalizes the environment and flag paths that
+// Windows exposes with backslashes before they are persisted in a portable
+// receipt. Go's path package intentionally does not treat backslashes as path
+// separators, so this conversion must happen before path.Join and validation.
+func windowsReceiptPath(value string) string {
+	return strings.ReplaceAll(value, "\\", "/")
 }
 
 // Receipt is the only authority a future uninstall may use to identify files

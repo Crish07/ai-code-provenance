@@ -16,7 +16,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const schemaVersion = 3
+const schemaVersion = 5
 
 // IdentityVersionV2 marks rows whose content and identity hashes use the
 // complete Line Identity format. Rows created by schema v1 cannot be upgraded
@@ -33,7 +33,6 @@ type Session struct {
 	ID, ProjectPath, Task, Agent, AgentInstanceID, SnapshotID, State, StartedAt string
 	Model, TaskKey, LastHeartbeatAt, FinishedAt, FailureCode, FailureMessage    sql.NullString
 }
-type FileSnapshot struct{ SnapshotID, FilePath, ContentHash, StoragePath string }
 type ChangeEvent struct {
 	ID, SessionID, FilePath, Status, DiffHash, CreatedAt string
 	AddedLines, DeletedLines                             int
@@ -43,6 +42,8 @@ type LineProvenance struct {
 	OriginSessionID                                            sql.NullString
 	IdentityVersion                                            int
 }
+
+const SnapshotGCMaintenance = "snapshot_gc"
 
 // Open creates or opens a SQLite database and applies migrations.
 func Open(path string) (*Store, error) {
@@ -162,6 +163,47 @@ func (s *Store) LeaseExpiredSessionsBefore(ctx context.Context, projectPath, cut
 	return out, mapError(rows.Err())
 }
 
+// TryAcquireMaintenance atomically grants a project maintenance lease. A
+// completed or explicitly failed run is throttled by intervalCutoff. An
+// expired in-progress lease may be taken over immediately after its deadline.
+func (s *Store) TryAcquireMaintenance(ctx context.Context, name, owner, now, expiresAt, intervalCutoff string) (bool, error) {
+	result, err := s.db.ExecContext(ctx, `INSERT INTO maintenance_state(name,last_attempt_at,lease_owner,lease_expires_at,last_error)
+		VALUES (?,?,?,?,NULL)
+		ON CONFLICT(name) DO UPDATE SET
+			last_attempt_at=excluded.last_attempt_at,
+			lease_owner=excluded.lease_owner,
+			lease_expires_at=excluded.lease_expires_at,
+			last_error=NULL
+		WHERE maintenance_state.last_attempt_at IS NULL
+			OR maintenance_state.last_attempt_at<=?
+			OR (maintenance_state.lease_expires_at IS NOT NULL AND maintenance_state.lease_expires_at<=?)`,
+		name, now, owner, expiresAt, intervalCutoff, now)
+	if err != nil {
+		return false, mapError(err)
+	}
+	n, err := result.RowsAffected()
+	return n == 1, err
+}
+
+// CompleteMaintenance records a successful maintenance run and clears its
+// lease. Only the current owner may complete it.
+func (s *Store) CompleteMaintenance(ctx context.Context, name, owner, completedAt string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE maintenance_state
+		SET last_success_at=?,lease_owner=NULL,lease_expires_at=NULL,last_error=NULL
+		WHERE name=? AND lease_owner=?`, completedAt, name, owner)
+	return mapError(err)
+}
+
+// FailMaintenance records a failed run and releases the lease. The attempt
+// timestamp remains intact, so normal start traffic does not retry it until
+// the configured interval elapses.
+func (s *Store) FailMaintenance(ctx context.Context, name, owner, message string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE maintenance_state
+		SET lease_owner=NULL,lease_expires_at=NULL,last_error=?
+		WHERE name=? AND lease_owner=?`, message, name, owner)
+	return mapError(err)
+}
+
 // TerminalSessionsBefore returns only terminal sessions eligible for retention
 // cleanup, ordered deterministically. Active sessions are intentionally absent.
 func (s *Store) TerminalSessionsBefore(ctx context.Context, projectPath, cutoff string) ([]Session, error) {
@@ -179,29 +221,6 @@ func (s *Store) TerminalSessionsBefore(ctx context.Context, projectPath, cutoff 
 		out = append(out, v)
 	}
 	return out, mapError(rows.Err())
-}
-
-func (s *Store) UpdateSessionState(ctx context.Context, id, state string) error {
-	_, err := s.db.ExecContext(ctx, "UPDATE ai_session SET state=?, finished_at=? WHERE id=?", state, Now(), id)
-	return mapError(err)
-}
-
-func (s *Store) SaveSnapshot(ctx context.Context, v FileSnapshot) error {
-	_, err := s.db.ExecContext(ctx, "INSERT INTO file_snapshot(snapshot_id,file_path,content_hash,storage_path) VALUES (?,?,?,?)", v.SnapshotID, v.FilePath, v.ContentHash, v.StoragePath)
-	return mapError(err)
-}
-
-func (s *Store) SaveChangeEvent(ctx context.Context, v ChangeEvent) error {
-	_, err := s.db.ExecContext(ctx, "INSERT INTO ai_change_event(id,session_id,file_path,status,added_lines,deleted_lines,diff_hash,created_at) VALUES (?,?,?,?,?,?,?,?)", v.ID, v.SessionID, v.FilePath, v.Status, v.AddedLines, v.DeletedLines, v.DiffHash, v.CreatedAt)
-	return mapError(err)
-}
-
-func (s *Store) SaveLineProvenance(ctx context.Context, v LineProvenance) error {
-	if v.IdentityVersion == 0 {
-		v.IdentityVersion = IdentityVersionV2
-	}
-	_, err := s.db.ExecContext(ctx, "INSERT INTO line_provenance(id,file_path,line_identity,content_hash,source,origin_session_id,created_at,identity_version) VALUES (?,?,?,?,?,?,?,?)", v.ID, v.FilePath, v.LineIdentity, v.ContentHash, v.Source, v.OriginSessionID, v.CreatedAt, v.IdentityVersion)
-	return mapError(err)
 }
 
 func Now() string { return time.Now().UTC().Format(time.RFC3339Nano) }
@@ -232,6 +251,12 @@ func (s *Store) Migrate(ctx context.Context) error {
 				"ALTER TABLE ai_session ADD COLUMN last_heartbeat_at TEXT",
 				"UPDATE ai_session SET last_heartbeat_at=started_at WHERE last_heartbeat_at IS NULL",
 				"CREATE INDEX ai_session_project_instance_active_idx ON ai_session(project_path,agent_instance_id,state,started_at)",
+			},
+			4: {
+				"DROP TABLE IF EXISTS file_snapshot",
+			},
+			5: {
+				"CREATE TABLE maintenance_state (name TEXT PRIMARY KEY, last_attempt_at TEXT, last_success_at TEXT, lease_owner TEXT, lease_expires_at TEXT, last_error TEXT)",
 			},
 		}
 		for next := version + 1; next <= schemaVersion; next++ {
@@ -265,15 +290,6 @@ func (s *Store) WithTx(ctx context.Context, fn func(*sql.Tx) error) error {
 		return err
 	}
 	return mapError(tx.Commit())
-}
-
-func (s *Store) DB() *sql.DB { return s.db }
-
-func (s *Store) FinishAtomic(ctx context.Context, id string) error {
-	return s.WithTx(ctx, func(tx *sql.Tx) error {
-		_, e := tx.ExecContext(ctx, "UPDATE ai_session SET state='finished', finished_at=? WHERE id=? AND state='active'", Now(), id)
-		return e
-	})
 }
 
 // CommitFinish records a finish as one transaction. removedIDs are current v2
