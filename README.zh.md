@@ -90,7 +90,7 @@ ai-prov hook install
 
 ### 工作区忽略规则
 
-`session_start` 与 `session_finish` 同时读取项目根目录现有的 `.gitignore`，以及 `.ai-provenance/.ai-provenanceignore`。两者使用按行、后匹配优先的 Git 风格规则子集：支持空行、`#` 注释、`!` 反向规则、`*`、`?`、`[]`、`**`、根目录相对路径，以及以 `/` 结尾的递归目录规则。
+`session_start` 与 `session_finish` 同时读取项目根目录现有的 `.gitignore`，以及 `.ai-provenance/.ai-provenanceignore`。两者使用按行、后匹配优先的 Git 风格规则子集：支持空行、`#` 注释、`!` 反向规则、`*`、`?`、`[]`、`**`、根目录相对路径，以及以 `/` 结尾的递归目录规则。`init` 仅自动写入 `.git/` 与 `.ai-provenance/` 两条默认目录规则。
 
 例如，下面的规则会使 `.gitnexus` 的全部分析缓存不参与 snapshot 或 finish Diff：
 
@@ -98,7 +98,7 @@ ai-prov hook install
 .gitnexus/
 ```
 
-`.gitnexus/` 也已是内置跳过目录。专用规则只应用于缓存、构建产物等非业务内容；不得用它排除源码、测试、配置或产品文档来规避 provenance。当前不读取嵌套 `.gitignore`、Git attributes，也不实现转义尾随空格语义。
+`.ai-provenance/.ai-provenanceignore` 用于按项目扩展：需要时请由用户自行加入 `.gitnexus/`、`node_modules/` 等缓存/依赖规则。`.git/` 与 `.ai-provenance/` 即使被从文件移除，仍是不可取消的安全边界。专用规则只应用于缓存、构建产物等非业务内容；不得用它排除源码、测试、配置或产品文档来规避 provenance。当前不读取嵌套 `.gitignore`、Git attributes，也不实现转义尾随空格语义。
 
 ## 覆盖率代表什么
 
@@ -109,6 +109,60 @@ AI 来源覆盖率只表示 staged/worktree **新增有效行**中，匹配已�
 已匹配 AI provenance：5
 AI 来源覆盖率：100%
 ```
+
+## 项目配置 `config.yaml`
+
+`ai-prov init` 会在 `.ai-provenance/config.yaml` 写入下列项目级默认配置。所有容量均以字节表示；所有时长分别以小时或分钟表示。配置文件使用严格字段校验：未知字段、错误类型、非正数限制值或不支持的 `schema_version` 都会使项目配置无法加载。
+
+```yaml
+schema_version: 1
+max_file_bytes: 5242880
+strict_verify: false
+snapshot_retention_hours: 168
+snapshot_max_bytes: 1073741824
+lease_timeout_minutes: 1440
+max_active_per_agent_instance: 1
+expired_session_grace_hours: 168
+auto_reclaim_expired_sessions: true
+snapshot_auto_gc_interval_hours: 24
+```
+
+| 字段 | 默认值 | 作用与边界 |
+| --- | ---: | --- |
+| `schema_version` | `1` | 当前唯一支持的配置格式版本；不要手动改为其他值。 |
+| `max_file_bytes` | `5242880`（5 MiB） | 单个工作区文本文件可进入 snapshot/finish 扫描的最大大小；更大的文件会以 `too_large` 跳过。必须大于 0。 |
+| `strict_verify` | `false` | `verify` 的严格默认值，也是未显式配置 Hook `strict` 时 Hook 的默认值；严格模式发现未覆盖新增行时返回失败。 |
+| `snapshot_retention_hours` | `168`（7 天） | 常规终态 snapshot 的保留时长；每日首次 `session_start` 的自动 GC 会据此筛选 finished/failed session。必须大于 0。 |
+| `snapshot_max_bytes` | `1073741824`（1 GiB） | `.ai-provenance/objects` 内容寻址对象库的总容量上限；创建 snapshot 前会计算新增唯一内容，超限时不创建 session。必须大于 0。 |
+| `lease_timeout_minutes` | `1440`（24 小时） | active session 距最后一次 heartbeat 超过此值时，会在下一次 session 维护操作中标为 `SESSION_LEASE_EXPIRED`。必须大于 0。 |
+| `max_active_per_agent_instance` | `1` | 同一 `agent_instance_id` 同时允许的 active session 数量，防止 Agent 重复创建基线。必须大于 0。 |
+| `expired_session_grace_hours` | `168`（7 天） | 开启 lease 过期自动回收时，`SESSION_LEASE_EXPIRED` 的 snapshot 在失败后达到此时长即可成为 lease 专用自动回收候选。普通终态保留期也会独立生效；默认值下两者都是 7 天。必须大于 0。 |
+| `auto_reclaim_expired_sessions` | `true` | 是否启用 `SESSION_LEASE_EXPIRED` 的 lease 专用自动回收候选；设为 `false` 时只关闭这条额外候选路径，不影响普通终态保留期回收。 |
+| `snapshot_auto_gc_interval_hours` | `24` | 每个项目自动 GC 的最小尝试间隔；当前由 `session_start` 获取项目级维护租约后触发。必须大于 0。 |
+
+### 可选 Hook 配置
+
+初始 `config.yaml` 不包含 `hook` 段。安装 Hook 时，未显式配置的有效默认行为为：`strict` 继承 `strict_verify`，`write_trailer: true`，`title_coverage: true`，trailer 字段为 `lines,agent`，且 `comments: false`。通常应使用命令修改，避免手写无效字段：
+
+```sh
+ai-prov hook config show
+ai-prov hook config set --fields coverage,lines,agent --comments=false
+ai-prov hook config reset
+```
+
+如确需写入文件，`hook` 只接受以下字段：
+
+```yaml
+hook:
+  strict: false
+  write_trailer: true
+  title_coverage: true
+  trailer:
+    fields: [lines, agent]
+    comments: false
+```
+
+`trailer.fields` 仅接受 `coverage`、`lines`、`agent`、`provenance-id`，且不能为空、不可重复。`title_coverage` 控制提交标题是否追加 `[AI:<n>%]`；`write_trailer` 为 `false` 时不追加 ai-prov trailer，但 Hook 仍会清理历史 ai-prov trailer，且不会影响其他 Git trailer。
 
 ## CLI 完整命令参考
 
