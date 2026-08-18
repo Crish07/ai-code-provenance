@@ -77,6 +77,20 @@ func TestE2E_InitToStagedVerify_FullCoverage(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, ".ai-provenance", "snapshots")); err != nil {
 		t.Fatalf("init did not create snapshots directory: %v", err)
 	}
+	ignorePath := filepath.Join(root, ".ai-provenance", ".ai-provenanceignore")
+	if _, err := os.Stat(ignorePath); err != nil {
+		t.Fatalf("init did not create provenance ignore file: %v", err)
+	}
+	if err := os.WriteFile(ignorePath, []byte("cache/\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := initCmd.Execute(); err != nil {
+		t.Fatalf("repeat ai-prov init: %v", err)
+	}
+	ignoreContents, err := os.ReadFile(ignorePath)
+	if err != nil || string(ignoreContents) != "cache/\n" {
+		t.Fatalf("repeat init changed provenance ignore contents=%q err=%v", ignoreContents, err)
+	}
 	for _, name := range []string{"sessions", "reports"} {
 		if _, err := os.Stat(filepath.Join(root, ".ai-provenance", name)); !os.IsNotExist(err) {
 			t.Fatalf("init created unused %s directory: err=%v", name, err)

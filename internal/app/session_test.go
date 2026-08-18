@@ -240,6 +240,47 @@ func TestServiceFinish(t *testing.T) {
 		t.Fatal("repeat finish")
 	}
 }
+
+func TestServiceFinish_IgnoresGitNexusCacheBeyondDiffLimit(t *testing.T) {
+	root := t.TempDir()
+	codePath := filepath.Join(root, "main.go")
+	if err := os.WriteFile(codePath, []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	db, err := storage.Open(filepath.Join(root, "db.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	svc := Service{Root: root, MaxFileBytes: 2 * 1024 * 1024, Store: db}
+	cachePath := filepath.Join(root, ".gitnexus", "csv", "interface.csv")
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cachePath, []byte(strings.Repeat("generated,row\n", 5_000)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	start, err := svc.Start(context.Background(), StartRequest{Task: "edit code"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if start.TrackedFiles != 1 {
+		t.Fatalf("start tracked files = %d, want 1", start.TrackedFiles)
+	}
+	if err := os.WriteFile(codePath, []byte("package main\n\nfunc main() {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cachePath, []byte(strings.Repeat("updated,row\n", 5_000)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result, err := svc.Finish(context.Background(), start.SessionID)
+	if err != nil {
+		t.Fatalf("Finish error = %v", err)
+	}
+	if result.State != "finished" || result.ChangedFiles != 1 || len(result.Changes) != 1 || result.Changes[0].Path != "main.go" {
+		t.Fatalf("Finish result = %#v", result)
+	}
+}
 func TestServiceFinish_RecordsEdit(t *testing.T) {
 	root := t.TempDir()
 	p := filepath.Join(root, "a.go")
