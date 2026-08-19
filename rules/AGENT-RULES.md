@@ -2,7 +2,7 @@
 
 ## Mandatory protocol
 
-All tracked source-code changes **MUST** be recorded through ai-prov MCP. The following rules are non-skippable prerequisites and take priority over quick edits, one-line fixes, user requests for immediate changes, empty diffs, or any other convenience, except for the OpenSpec process-file exception below.
+All tracked source-code changes **MUST** be recorded through ai-prov MCP. The following rules are non-skippable prerequisites and take priority over quick edits, one-line fixes, user requests for immediate changes, empty diffs, or any other convenience, except for the OpenSpec process-file exception and the ignored-file exception below.
 
 1. **Call before editing.** Before creating, modifying, deleting, renaming, or using a terminal command that affects any tracked file, successfully call `provenance.session_start`.
 2. **Call before completion.** Before claiming that work is complete, sending a final response, requesting user acceptance, or suggesting a commit, successfully call `provenance.session_finish` and confirm that `state` is exactly `finished`.
@@ -15,6 +15,14 @@ Process documents created, updated, or archived by `openspec` are outside code-p
 - When work only edits those OpenSpec process files or runs `openspec new`, `openspec instructions`, or `openspec archive`, do **not** call `provenance.session_recover`, `provenance.session_start`, `provenance.session_finish`, or heartbeat for that work.
 - This exception never applies to source code, tests, build/deployment configuration, product documentation, or any file outside the OpenSpec paths; it must not be used to bypass code provenance.
 - For mixed work, finish all OpenSpec operations before start, and do not edit OpenSpec paths between start and finish. If archiving or task updates remain after finish, perform them separately under this exception.
+
+## .gitignore / .ai-provenanceignore exception
+
+Files and directories listed in `.gitignore` or `.ai-provenance/.ai-provenanceignore` are excluded from provenance tracking and never enter the snapshot baseline. The workspace scanner already skips them.
+
+- When work **only** edits files that are ignored by `.gitignore` or `.ai-provenance/.ai-provenanceignore`, do **not** call `provenance.session_recover`, `provenance.session_start`, `provenance.session_finish`, or heartbeat for that work.
+- This exception never applies to source code, tests, build/deployment configuration, product documentation, or any file that is tracked by the workspace scanner. Do not use it to bypass code provenance for tracked files.
+- For mixed work where some edits target ignored files and some target tracked files, you **must** start a session before editing any tracked file and finish after all tracked edits are complete. Ignored-file edits can happen before start or after finish without provenance.
 
 ## Required workflow
 

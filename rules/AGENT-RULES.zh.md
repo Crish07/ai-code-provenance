@@ -2,7 +2,7 @@
 
 ## 强制协议
 
-所有受追踪的源代码变更都**必须**通过 ai-prov MCP 记录。以下规则为不可跳过的前置条件，优先级高于快速修改、仅修复一行、用户要求立即编辑、空 Diff 或任何其他便利性考虑；下文定义的 OpenSpec 流程文件例外除外。
+所有受追踪的源代码变更都**必须**通过 ai-prov MCP 记录。以下规则为不可跳过的前置条件，优先级高于快速修改、仅修复一行、用户要求立即编辑、空 Diff 或任何其他便利性考虑；下文定义的 OpenSpec 流程文件和忽略文件例外。
 
 1. **编辑前必须调用。** 在创建、修改、删除、重命名或通过终端命令影响任何受追踪文件前，必须先成功调用 `provenance.session_start`。
 2. **结束前必须调用。** 在声称任务完成、给出最终答复、请求用户验收或建议提交前，必须成功调用 `provenance.session_finish`，并确认返回的 `state` 严格等于 `finished`。
@@ -15,6 +15,14 @@
 - **只**编辑这些 OpenSpec 流程文件、运行 `openspec new`、`openspec instructions` 或 `openspec archive` 时，禁止为此调用 `provenance.session_recover`、`provenance.session_start`、`provenance.session_finish` 或 heartbeat。
 - 此例外不适用于源码、测试、构建/部署配置、产品文档，或 OpenSpec 目录以外的任意文件；不得借此跳过代码 provenance。
 - 同一任务同时包含 OpenSpec 流程文件和受追踪代码时，必须先完成 OpenSpec 操作，再 start；start 到 finish 之间不得编辑 OpenSpec 路径。若 finish 后还需归档或更新 tasks，再以 OpenSpec 例外单独完成。
+
+## .gitignore / .ai-provenanceignore 忽略文件例外
+
+`.gitignore` 和 `.ai-provenance/.ai-provenanceignore` 中列出的文件与目录已被排除在 provenance 追踪之外，永远不会进入快照基线。工作区扫描器已自动跳过它们。
+
+- 当修改**仅**涉及被 `.gitignore` 或 `.ai-provenance/.ai-provenanceignore` 忽略的文件时，**禁止**为此调用 `provenance.session_recover`、`provenance.session_start`、`provenance.session_finish` 或 heartbeat。
+- 此例外不适用于源码、测试、构建/部署配置、产品文档，或工作区扫描器追踪的任意文件；不得借此跳过代码 provenance。
+- 同一任务同时包含忽略文件和受追踪文件时，**必须**先 start 再编辑任何受追踪文件，finish 之后再结束。忽略文件的编辑可以放在 start 之前或 finish 之后，无需 provenance。
 
 ## 必须执行的工作流
 
