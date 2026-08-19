@@ -30,8 +30,10 @@ Files and directories listed in `.gitignore` or `.ai-provenance/.ai-provenanceig
 2. Generate one UUID `agent_instance_id` for this Agent instance. Call `provenance.session_start` with a concise, accurate `task` and that ID; provide `agent` and `model` when available.
 3. Persist the returned `session_id` **and** `agent_instance_id`. Until a valid `session_id` is obtained, do not use an editor, patch, workspace-edit, file-write, rename, delete, or any shell command that can modify files.
 4. Write the returned `session_id` and `agent_instance_id` into durable task state that survives context compaction. Modify tracked code or documentation only after start succeeds; OpenSpec process files follow the exception above.
-5. Before calling `provenance.session_start`, call `provenance.session_recover`; if it returns exactly one active session, reuse both IDs. Normal work must not be interrupted or extended for a heartbeat. Use `provenance.session_heartbeat` only for work exceeding 24 hours when the host can run it independently. Call `provenance.session_finish` with both values when work is complete. Finish is required even when no files changed or the diff is empty.
-6. Before committing, optionally call `provenance.verify` with `scope: "staged"` and `strict: true`.
+5. Call `provenance.session_finish` with `session_id` and `agent_instance_id` when work is complete. Finish is required even when no files changed or the diff is empty.
+6. If context compaction loses the session_id or you are unsure whether an active session exists, call `provenance.session_recover` with the persisted `agent_instance_id`; if it returns exactly one active session, reuse both IDs.
+7. Use `provenance.session_heartbeat` only for work exceeding 24 hours when the host can run it independently. Normal work must not be interrupted or extended for a heartbeat.
+8. Before committing, optionally call `provenance.verify` with `scope: "staged"` and `strict: true`.
 
 Only the complete tool names `provenance.session_start`, `provenance.session_finish`, `provenance.session_status`, `provenance.verify`, `provenance.support`, `provenance.session_recover`, `provenance.session_heartbeat`, and `provenance.session_abandon` are valid. Do not invent, abbreviate, or substitute other names.
 
