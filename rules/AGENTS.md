@@ -6,6 +6,10 @@ All tracked source-code changes MUST be recorded through ai-prov MCP.
 
 Do not use provenance for OpenSpec-only process work in `openspec/changes/**` or `openspec/specs/**` (including proposal, design, tasks, change specs, and archive operations). This never covers source, tests, configuration, product documentation, or files outside those paths. For mixed work, complete OpenSpec operations before start and do not edit OpenSpec files between start and finish.
 
+## .gitignore / .ai-provenanceignore exception
+
+Files and directories listed in `.gitignore` or `.ai-provenance/.ai-provenanceignore` are excluded from provenance tracking (the workspace scanner already skips them). When work only edits ignored files, do not call provenance.session_start, provenance.session_finish, or heartbeat. This never applies to tracked source, tests, or configuration. For mixed work, start before editing any tracked file and finish after; ignored-file edits can happen outside the session.
+
 - Before editing, call provenance.session_start successfully.
 - Before reporting completion, call provenance.session_finish successfully and
   require state equal to finished.
