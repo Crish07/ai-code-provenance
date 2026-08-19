@@ -30,8 +30,10 @@
 2. 为本 Agent 实例生成一个 UUID `agent_instance_id`，调用 `provenance.session_start` 时提供简短准确的 `task`、该 ID；可用时提供 `agent` 与 `model`。
 3. 保存工具返回的 `session_id` **及** `agent_instance_id`。未取得有效 `session_id` 前，禁止使用编辑器、patch、workspace-edit、文件写入工具、重命名工具、删除工具或任何能够修改文件的 shell 命令。
 4. 将返回的 `session_id` 与 `agent_instance_id` 写入可跨上下文压缩保留的任务状态；仅在 start 成功后进行受追踪代码或文档修改。OpenSpec 流程文件遵循上文例外。
-5. 每次准备调用 `provenance.session_start` 前，先调用 `provenance.session_recover`；返回唯一 active session 时必须复用其两个 ID。正常任务不得为 heartbeat 中断或延长执行；只有超过 24 小时且宿主能独立后台执行时，才可选用 `provenance.session_heartbeat`。完成时使用两个 ID 调用 `provenance.session_finish`。即使没有文件变化或 Diff 为空，也必须调用 finish。
-6. 提交前可选调用 `provenance.verify`，参数使用 `scope: "staged"` 和 `strict: true`。
+5. 完成时使用 `session_id` 与 `agent_instance_id` 调用 `provenance.session_finish`。即使没有文件变化或 Diff 为空，也必须调用 finish。
+6. 上下文压缩、丢失 session_id 或不确定是否有既有 session 时，使用已持久化的 `agent_instance_id` 调用 `provenance.session_recover`；返回唯一 active session 时必须复用其两个 ID。
+7. 只有超过 24 小时且宿主能独立后台执行时，才可选用 `provenance.session_heartbeat`。正常任务不得为 heartbeat 中断或延长执行。
+8. 提交前可选调用 `provenance.verify`，参数使用 `scope: "staged"` 和 `strict: true`。
 
 只能使用完整工具名 `provenance.session_start`、`provenance.session_finish`、`provenance.session_status`、`provenance.verify`、`provenance.support`、`provenance.session_recover`、`provenance.session_heartbeat` 和 `provenance.session_abandon`；不得编造、缩写或使用其他名称替代。
 
